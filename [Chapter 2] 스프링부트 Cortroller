@@ -1,0 +1,228 @@
+# [Chapter 2] 스프링부트 Cortroller
+
+### 10. 기본 동작방식 이해하기
+
+컨트롤러란? (FrontContreller와 Dispatcher)
+
+1) 요청을 할 때마다 Java 파일이 호출된다.
+
+2) 요청의 종류가 3개이면 3개의 Java 파일이 필요하다.
+
+3) 하나의 Java 파일에서 모든 요청을 받는 FrontController 사용.
+
+4) 너무 많은 요청이 한곳으로 모이는 것을 방지하기 위해 도메인 별로 분기
+
+5) 분기의 일은 Dispatcher가 해준다. (ServletDispatcher, RequestDispatcher)
+
+서블릿: 자바로 웹을 할 수 있는 기술)
+
+도메인: 남자, 여자 (범주를 주는 기술)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/25ee549f-2b40-4e31-be95-ed55f2af5c42/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/cd2de076-30b8-4e0f-9769-a3327fa2cda8/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/b0d31f47-ee51-4f0c-87de-3b766a1a6864/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/1aeec452-cd95-4009-a787-bd76b2213668/Untitled.png)
+
+### 11. http 4가지 요청 방식
+
+클라이언트가 웹서버에 요청!!
+
+웹서버는 DB에 SELECT, INSERT, UPDATE, DELETE 요청을 해서 응답!!
+
+(1) GET(동사) - 데이터 요청
+
+(2) POST(동사) - 데이터 전송
+
+(3) PUT(동사) - 데이터 갱신
+
+(4) DELETE(동사) - 데이터 삭제
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/8419d9c6-abb1-41de-819b-15c1692a100e/Untitled.png)
+
+spring boot devetool 라이브러리: 저장하는 순간 리로드
+
+spring boot 라이브러리: @RestController 같은 라이브러리
+
+com.cos.controller.demo.web.HttpController.java
+
+```java
+package com.cos.controller.demo.web;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+//@Controller // File을 응답하는 컨트롤러 (클라이언트가 브라우저면 .html 파일을)
+@RestController // Data를 응답하는 컨트롤러 (클라이언트가 핸드폰이면 data)
+public class HttpController {
+
+	// http://localhost:8080/get
+	@GetMapping("/get")
+	public String get() {
+		return "<h1>get요청됨</h1>";
+	}
+	
+	// http://localhost:8080/post
+	@PostMapping("/post")
+	public String post() {
+		return "post요청됨";
+	}
+	
+	// http://localhost:8080/put
+	@PutMapping("/put")
+	public String put() {
+		return "put요청됨";
+	}
+	
+	// http://localhost:8080/delete
+	@DeleteMapping("/delete")
+	public String delete() {
+		return "delete요청됨";
+	}
+}
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/01a06cb8-5d97-4cf1-b880-dc5b60b7b9a2/Untitled.png)
+
+웹 브라우저는 get만 가능 그래서 postman 사용
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/56fcd925-109c-4552-b36e-3f447583b816/Untitled.png)
+
+### 12. 쿼리스트링, 주소변수매핑
+
+http 쿼리 스트링(querystring), 주소 변수 매핑(path variable)
+
+1) 구체적인 데이터 요청시에 쿼리스트링이나 주소변수매핑이 필요하다.
+
+2) 스프링부트에서는 주소변수매핑을 주로 사용한다. 훨씬 편리하다.
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/7d292efc-73a7-47d1-974d-cda5820390c6/Untitled.png)
+
+?type=양념 → 쿼리스트링
+
+/양념 → 주소 변수 매핑
+
+com.cos.controller.demo.web.QueryPathController.java
+
+```java
+package com.cos.controller.demo.web;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class QueryPathController {
+
+	@GetMapping("/chicken")
+	public String chickenQuery(String type) {
+		return type+" 배달갑니다.(쿼리스트링)";
+	}
+	
+	@GetMapping("/chicken/{type}")
+	public String chickenPath(@PathVariable String type) {
+		return type+" 배달갑니다.(주소 변수 매핑)";
+	}
+	
+}
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/86d044a2-b33f-4063-9e89-e2a419ace62f/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/d14f1b9a-42ec-4296-815a-5b24874b737f/Untitled.png)
+
+웬만하면 주소 변수 매핑으로(간편하니깐)
+
+### 13. http body 데이터 전송하기
+
+- http header의 Content-Type 이해
+
+- 스프링부트는 기본적으로 x-www-form-urlencoded 타입을 파싱(분석)해준다.
+- x-www-form-urlencoded
+- text/plain
+- application/json
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/1df8e939-fb53-4bbe-9467-4f308fdd54ef/Untitled.png)
+
+com.cos.controller.demo.web.HeepBodyController.java
+
+```java
+package com.cos.controller.demo.web;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.controller.demo.web.domain.User;
+
+@RestController
+public class HttpBodyController {
+		
+	private static final Logger log = LoggerFactory.getLogger(HttpBodyController.class);
+
+	@PostMapping("/body1")
+	public String xwwwformmurlencoded(String username) {
+		log.info(username);
+		return "key=value 전송옴";
+	}
+	
+	@PostMapping("/body2")
+	public String plaintext(@RequestBody String data) { // 평문: 안녕
+		log.info(data);
+		return "plain/text 전송옴";
+	}
+	
+	@PostMapping("/body3")
+	public String applicationjson(@RequestBody String data) { 
+		log.info(data);
+		return "json 전송옴";
+	}
+	
+	@PostMapping("/body4")
+	public String applicationjsonToObject(@RequestBody User user) { 
+		log.info(user.getUsername());
+		return "json 전송옴";
+	}
+}
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/c208ae14-f583-44f5-9eaa-66db756019e3/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/d88e7d2a-83c7-4f35-94dc-0069b46a1aad/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/1aef0632-1038-40c5-9dcd-a9de71e6b853/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/f2ef3644-b611-4f6e-a42e-033c2523fbab/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/e751ba54-7329-47ed-ac98-94a4d7f574a3/Untitled.png)
+
+com.cos.controller.demo.web.domain.User.java
+
+```java
+package com.cos.controller.demo.web.domain;
+
+public class User {
+	private String username;
+
+	public String getUsername() {
+		return username;
+	}
+
+	public void setUsername(String username) {
+		this.username = username;
+	}
+	
+}
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/f0cd7723-a137-460e-b4d7-6f8a4b2e4845/Untitled.png)
+
+### 14. JSON 응답하기
