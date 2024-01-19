@@ -1,3 +1,5 @@
+# [Chapter 2] 스프링부트 Cortroller
+
 ### 10. 기본 동작방식 이해하기
 
 컨트롤러란? (FrontContreller와 Dispatcher)
@@ -386,3 +388,87 @@ public class HttpRespController {
 }
 ```
 
+### 16. JSP파일에 Java 코드 사용해보기
+
+- java 코드 사용
+- model 사용
+
+JavaToJspController.java
+
+```java
+package com.cos.controller.demo.web;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+
+import com.cos.controller.demo.web.domain.User;
+
+@Controller
+public class JavaToJspController {
+
+	@GetMapping("/jsp/java")
+	public String jspToJava() {
+		return "d";
+	}
+	
+	@GetMapping("/jsp/java/model")
+	public String jspToJavaToMedel(Model model) { // 함수의 파라미터에 Model을 선언하고
+		
+		User user = new User();
+		user.setUsername("ssar");
+		model.addAttribute("username", user.getUsername()); // addAttribute 함수로 전달만 하면 됨
+		
+		return "e";
+	}
+	
+}
+```
+
+d.jsp
+
+```java
+<%@ page language="java" contentType="text/html; charset=UTF-8"
+    pageEncoding="UTF-8"%>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+</head>
+<body>
+<h1>This is d.</h1>
+<%
+	int num = 10;
+%>
+<h3> num의 값은 <%=num %></h3>
+</body>
+</html>
+```
+
+e.jsp
+
+```java
+<%@ page language="java" contentType="text/html; charset=UTF-8"
+    pageEncoding="UTF-8"%>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+</head>
+<body>
+<h1>This is e</h1>
+<h3>${username}</h3>
+</body>
+</html>
+```
+
+### 17. HTTP 요청 재분배하기(redirection)
+
+- http 상태코드 300번대
+- 다른 주소로 요청을 분배한다.
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/544dac62-c063-4ba7-97db-83a9560348f0/Untitled.png)
+
+HttpRedirectionController.java
