@@ -472,3 +472,25 @@ e.jsp
 ![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/544dac62-c063-4ba7-97db-83a9560348f0/Untitled.png)
 
 HttpRedirectionController.java
+
+package com.cos.controller.demo.web;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
+public class HttpRedirectionController {
+
+	@GetMapping("/home")
+	public String home() {
+		// 1만줄 코드 가정
+		return "home";
+	}
+	
+	@GetMapping("/away")
+	public String away() {
+		// 다른코드
+		return "redirect:/home"; // 리다이렉션이 된다. (@Controller)
+		
+	}
+}
