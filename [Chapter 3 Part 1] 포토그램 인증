@@ -1,0 +1,998 @@
+# [Chapter 3 Part 1] 포토그램 인증
+
+### 18. 회원가입-SecurityConfig 생성
+
+- 시큐리티 세팅
+- 회원가입 구현
+- 로그인 구현
+- 회원정보 수정 구현
+
+우린 [localhost:8080](http://localhost:8080) 을 쳤지만 시큐리티인 [localhost:8080/login](http://localhost:8080/login) 페이지로 감(리다이렉트)
+
+수정하고 싶음
+
+com.cos.photogramstart.config.SecurityConfig.java
+
+```java
+package com.cos.photogramstart.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+
+@EnableWebSecurity // 해당 파일로 시큐리티를 활성화
+@Configuration // IoC
+public class SecurityConfig extends WebSecurityConfigurerAdapter{
+
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		// super 삭제 -> 기존 시큐리티가 가지고 있는 기능이 다 비활성화됨 (localhost:8080 -> localhost:8080/login 을 비활성화)
+		http.authorizeRequests()
+			.antMatchers("/","/user/**","/image/**","/subscribe/**","/comment/**").authenticated() // 인증이 필요
+			.anyRequest().permitAll() // 그 외는 허용
+			.and()
+			.formLogin()
+			.loginPage("/auth/signin") // 인증이 필요한 url이면 이쪽으로 자동으로 가게 하겠다
+			.defaultSuccessUrl("/"); // 로그인이 정상적으로 처리되면 / 로 가게 할게
+	}
+}
+```
+
+### 19. 회원가입-CSFR 포큰 해제
+
+com.cos.photogramstart.web.AuthController.java
+
+```java
+package com.cos.photogramstart.web;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
+@Controller // 1. IoC 2. 파일을 리턴하는 컨트롤러
+public class AuthController {
+
+	@GetMapping("/auth/signin")
+	public String signinForm() {
+		return "/auth/signin";
+	}
+	
+	@GetMapping("/auth/signup")
+	public String signupForm() {
+		return "/auth/signup";
+	}
+	
+	// 예상: 회원가입버튼 -> /auth/siginup -> /auth/signin
+	// 결과: 회원가입버튼 -> 아무것도 안됨 (CSRF 토큰이 있기 때문) (정상적인 사용자인지 구분하기 위함)
+	@PostMapping("/auth/signup") // 회원가입이 성공하면 로그인 페이지로
+	public String signup() {
+		
+		return "/auth/signin";
+	}
+}
+```
+
+signup.jsp 추가
+
+```java
+<!--회원가입 인풋-->
+                        <form class="login__input" action="/auth/signup" method="post">
+```
+
+[SecurityConfig.java](http://SecurityConfig.java) 추가
+
+```java
+http.csrf().disable();
+```
+
+### 20. 회원가입-User 모델 만들기
+
+com.cos.photogramstart.web.dte.auth.SignupDto.java
+
+```java
+package com.cos.photogramstart.web.dte.auth;
+
+import lombok.Data;
+
+@Data // Getter, Setter
+public class SignupDto { // 통신할떄 필요한 데이터를 담아두는 오브젝트 (username,password,email,name)
+
+	private String username;
+	private String password;
+	private String email;
+	private String name;
+}
+```
+
+[AuthController.java](http://AuthController.java) 추가
+
+```java
+@PostMapping("/auth/signup") // 회원가입이 성공하면 로그인 페이지로
+	public String signup(SignupDto signupDto) { // key = value(x-www-form-urlencoded)
+		log.info(signupDto.toString());
+		
+		return "/auth/signin";
+	}
+```
+
+com.cos.photogramstart.domain.user.User.java
+
+```java
+package com.cos.photogramstart.domain.user;
+
+import java.time.LocalDateTime;
+
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.PrePersist;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+// JPA - Java Persistence API (자바로 데이터를 영구적으로 저장(DB)할 수 있는 API를 제공)
+
+@Entity // DB에 테이블을 생성
+@Data
+@NoArgsConstructor // 빈 생성자
+@AllArgsConstructor // 전체 생성자
+public class User {
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY) // 번호 증가 전략이 데이터베이스를 따라간다.
+	private int id;
+	
+	private String username;
+	private String password;
+	
+	private String name;
+	private String website;
+	private String bio; // 자기 소개
+	private String email;
+	private String phone;
+	private String gender;
+	
+	private String profileImageUrl; // 작성자 사진
+	private String role; // 권한
+	
+	private LocalDateTime createDate;
+	
+	@PrePersist // DB에 Insert가 되기 직전에 실행
+	public void createDate() {
+		this.createDate = LocalDateTime.now();
+	}
+}
+```
+
+### 21. 회원가입-완료
+
+이제 받은 데이터를 DB에 저장하기 위해 Service 가 필요
+
+[User.java](http://User.java) @Builder 추가
+
+```java
+package com.cos.photogramstart.domain.user;
+
+import java.time.LocalDateTime;
+
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.PrePersist;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+// JPA - Java Persistence API (자바로 데이터를 영구적으로 저장(DB)할 수 있는 API를 제공)
+
+@Builder
+@Entity // DB에 테이블을 생성
+@Data
+@NoArgsConstructor // 빈 생성자
+@AllArgsConstructor // 전체 생성자
+public class User {
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY) // 번호 증가 전략이 데이터베이스를 따라간다.
+	private int id;
+	
+	private String username;
+	private String password;
+	
+	private String name;
+	private String website;
+	private String bio; // 자기 소개
+	private String email;
+	private String phone;
+	private String gender;
+	
+	private String profileImageUrl; // 작성자 사진
+	private String role; // 권한
+	
+	private LocalDateTime createDate;
+	
+	@PrePersist // DB에 Insert가 되기 직전에 실행
+	public void createDate() {
+		this.createDate = LocalDateTime.now();
+	}
+}
+```
+
+[SignupDto.java](http://SignupDto.java) toEntity 추가
+
+```java
+package com.cos.photogramstart.web.dte.auth;
+
+import com.cos.photogramstart.domain.user.User;
+
+import lombok.Data;
+
+@Data // Getter, Setter
+public class SignupDto { // 통신할떄 필요한 데이터를 담아두는 오브젝트 (username,password,email,name)
+
+	private String username;
+	private String password;
+	private String email;
+	private String name;
+	
+	public User toEntity() {
+		return User.builder()
+				.username(username)
+				.password(password)
+				.email(email)
+				.name(name)
+				.build();
+	}
+}
+```
+
+com.cos.photogramstart.service.AuthService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import org.springframework.stereotype.Service;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.domain.user.UserRepository;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Service // 1. IoC 2. 트랜잭션 관리
+public class AuthService {
+
+	private final UserRepository userRepository;
+	
+	public User 회원가입(User user) {
+		// 회원가입 진행
+		User userEntity = userRepository.save(user);
+		return userEntity;
+	}
+}
+```
+
+com.cos.photogramstart.domain.user.UserRepository.java
+
+```java
+package com.cos.photogramstart.domain.user;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+// 어노테이션이 없어도 JpaRepository를 상속하면 IoC 등록이 자동으로 된다.
+public interface UserRepository extends JpaRepository<User, Integer>{
+
+}
+```
+
+[AuthController.java](http://AuthController.java) 추가
+
+```java
+package com.cos.photogramstart.web;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.service.AuthService;
+import com.cos.photogramstart.web.dte.auth.SignupDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor // final이 걸려있는 모든 생성자 생성 // final 필드를 DI 할때 사용
+@Controller // 1. IoC 2. 파일을 리턴하는 컨트롤러
+public class AuthController {
+
+	
+	private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
+	
+	private final AuthService authService;
+	
+//	public AuthController(AuthService authService) {
+//		this.authService = authService; // 의존성 주입
+//	}
+	
+	@GetMapping("/auth/signin")
+	public String signinForm() {
+		return "/auth/signin";
+	}
+	
+	@GetMapping("/auth/signup")
+	public String signupForm() {
+		return "/auth/signup";
+	}
+	
+	// 예상: 회원가입버튼 -> /auth/siginup -> /auth/signin
+	// 결과: 회원가입버튼 -> 아무것도 안됨 (CSRF 토큰이 있기 때문) (정상적인 사용자인지 구분하기 위함)
+	@PostMapping("/auth/signup") // 회원가입이 성공하면 로그인 페이지로
+	public String signup(SignupDto signupDto) { // key = value(x-www-form-urlencoded)
+		log.info(signupDto.toString());
+		
+		// User <- SignupDto
+		User user = signupDto.toEntity();
+		log.info(user.toString());
+		
+		User userEntity = authService.회원가입(user);
+		System.out.println(userEntity);
+		return "/auth/signin";
+	}
+}
+```
+
+### 22. 회원가입-비밀번호 해시
+
+비밀번호 암호화 + 권한 수정
+
+AuthService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.domain.user.UserRepository;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Service // 1. IoC 2. 트랜잭션 관리
+public class AuthService {
+
+	private final UserRepository userRepository;
+	private final BCryptPasswordEncoder bCryptPasswordEncoder;
+	
+	@Transactional // Write(Insert, Update, Delete) 트랜잭션 관리
+	public User 회원가입(User user) {
+		// 회원가입 진행
+		String rawPassword = user.getPassword();
+		String encPassword = bCryptPasswordEncoder.encode(rawPassword); // 해시로 암호화
+		user.setPassword(encPassword);
+		
+		user.setRole("ROLE_USER"); // 관리자 ROLE_ADMIN
+		User userEntity = userRepository.save(user);
+		return userEntity;
+	}
+}
+```
+
+SecurityConfig.java
+
+```java
+package com.cos.photogramstart.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
+@EnableWebSecurity // 해당 파일로 시큐리티를 활성화
+@Configuration // IoC
+public class SecurityConfig extends WebSecurityConfigurerAdapter{
+
+	
+	public BCryptPasswordEncoder encode() {
+		return new BCryptPasswordEncoder();
+	}
+	
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		// super 삭제 -> 기존 시큐리티가 가지고 있는 기능이 다 비활성화됨 (localhost:8080 -> localhost:8080/login 을 비활성화)
+		http.csrf().disable();
+		http.authorizeRequests()
+			.antMatchers("/","/user/**","/image/**","/subscribe/**","/comment/**").authenticated() // 인증이 필요
+			.anyRequest().permitAll() // 그 외는 허용
+			.and()
+			.formLogin()
+			.loginPage("/auth/signin") // 인증이 필요한 url이면 이쪽으로 자동으로 가게 하겠다
+			.defaultSuccessUrl("/"); // 로그인이 정상적으로 처리되면 / 로 가게 할게
+	}
+}
+```
+
+[User.java](http://User.java) username 유니크 추가
+
+```java
+package com.cos.photogramstart.domain.user;
+
+import java.time.LocalDateTime;
+
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.PrePersist;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+// JPA - Java Persistence API (자바로 데이터를 영구적으로 저장(DB)할 수 있는 API를 제공)
+
+@Builder
+@Entity // DB에 테이블을 생성
+@Data
+@NoArgsConstructor // 빈 생성자
+@AllArgsConstructor // 전체 생성자
+public class User {
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY) // 번호 증가 전략이 데이터베이스를 따라간다.
+	private int id;
+	
+	@Column(unique = true)
+	private String username;
+	private String password;
+	
+	private String name;
+	private String website;
+	private String bio; // 자기 소개
+	private String email;
+	private String phone;
+	private String gender;
+	
+	private String profileImageUrl; // 작성자 사진
+	private String role; // 권한
+	
+	private LocalDateTime createDate;
+	
+	@PrePersist // DB에 Insert가 되기 직전에 실행
+	public void createDate() {
+		this.createDate = LocalDateTime.now();
+	}
+}
+```
+
+### 23. 회원가입-전처리 후처리 개념잡기
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/e00a9c3a-38be-4488-bde3-8fdd7998c085/Untitled.png)
+
+AOP: 간점(회원가입) 지향 프로그래밍 (전처리, 후처리)
+
+### 24. 회원가입-유효성 검사하기
+
+pom.xml 추가
+
+```java
+<!--
+		https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-validation -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+			<version>2.4.4</version>
+		</dependency>
+```
+
+[SignupDto.java](http://SignupDto.java) 추가
+
+```java
+package com.cos.photogramstart.web.dte.auth;
+
+import javax.validation.constraints.Max;
+import javax.validation.constraints.NotBlank;
+
+import com.cos.photogramstart.domain.user.User;
+
+import lombok.Data;
+
+@Data // Getter, Setter
+public class SignupDto { // 통신할떄 필요한 데이터를 담아두는 오브젝트 (username,password,email,name)
+	
+	@Max(20)
+	private String username;
+	@NotBlank
+	private String password;
+	@NotBlank
+	private String email;
+	@NotBlank
+	private String name;
+	
+	public User toEntity() {
+		return User.builder()
+				.username(username)
+				.password(password)
+				.email(email)
+				.name(name)
+				.build();
+	}
+}
+```
+
+[User.java](http://User.java) 추가
+
+```java
+package com.cos.photogramstart.domain.user;
+
+import java.time.LocalDateTime;
+
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.PrePersist;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+// JPA - Java Persistence API (자바로 데이터를 영구적으로 저장(DB)할 수 있는 API를 제공)
+
+@Builder
+@Entity // DB에 테이블을 생성
+@Data
+@NoArgsConstructor // 빈 생성자
+@AllArgsConstructor // 전체 생성자
+public class User {
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY) // 번호 증가 전략이 데이터베이스를 따라간다.
+	private int id;
+	
+	@Column(length = 20, unique = true)
+	private String username;
+	
+	@Column(nullable=false)
+	private String password;
+	
+	@Column(nullable=false)
+	private String name;
+	
+	private String website;
+	private String bio; // 자기 소개
+	
+	@Column(nullable=false)
+	private String email;
+	
+	private String phone;
+	private String gender;
+	
+	private String profileImageUrl; // 작성자 사진
+	private String role; // 권한
+	
+	private LocalDateTime createDate;
+	
+	@PrePersist // DB에 Insert가 되기 직전에 실행
+	public void createDate() {
+		this.createDate = LocalDateTime.now();
+	}
+}
+```
+
+[AuthController.java](http://AuthController.java) 추가
+
+```java
+package com.cos.photogramstart.web;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.validation.Valid;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Controller;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.service.AuthService;
+import com.cos.photogramstart.web.dte.auth.SignupDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor // final이 걸려있는 모든 생성자 생성 // final 필드를 DI 할때 사용
+@Controller // 1. IoC 2. 파일을 리턴하는 컨트롤러
+public class AuthController {
+
+	
+	private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
+	
+	private final AuthService authService;
+	
+//	public AuthController(AuthService authService) {
+//		this.authService = authService; // 의존성 주입
+//	}
+	
+	@GetMapping("/auth/signin")
+	public String signinForm() {
+		return "/auth/signin";
+	}
+	
+	@GetMapping("/auth/signup")
+	public String signupForm() {
+		return "/auth/signup";
+	}
+	
+	// 예상: 회원가입버튼 -> /auth/siginup -> /auth/signin
+	// 결과: 회원가입버튼 -> 아무것도 안됨 (CSRF 토큰이 있기 때문) (정상적인 사용자인지 구분하기 위함)
+	@PostMapping("/auth/signup") // 회원가입이 성공하면 로그인 페이지로
+	public String signup(@Valid SignupDto signupDto, BindingResult bindingResult) { // key = value(x-www-form-urlencoded)
+		log.info(signupDto.toString());
+		
+		if(bindingResult.hasErrors()) {
+			Map<String, String> errorMap = new HashMap<>();
+			
+			for(FieldError error : bindingResult.getFieldErrors()) {
+				errorMap.put(error.getField(),error.getDefaultMessage());
+				System.out.println(error.getDefaultMessage());
+			}
+		}
+		
+		// User <- SignupDto
+		User user = signupDto.toEntity();
+		log.info(user.toString());
+		
+		User userEntity = authService.회원가입(user);
+		System.out.println(userEntity);
+		return "/auth/signin";
+	}
+}
+```
+
+### 25. 회원가입-@ResponseBody 사용하기
+
+백쪽에서 막고 프론트쪽에서도 막아야 안전
+
+요청에 대한 분기
+
+@Controller 인데 @ResponseBody가 있으면 데이터를 반환
+
+[SignupDto.java](http://SignupDto.java) 수정
+
+```java
+@Size(min=2,max=20)
+@NotBlank
+private String username;
+```
+
+[AuthController.java](http://AuthController.java) 수정
+
+```java
+package com.cos.photogramstart.web;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.validation.Valid;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Controller;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.service.AuthService;
+import com.cos.photogramstart.web.dte.auth.SignupDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor // final이 걸려있는 모든 생성자 생성 // final 필드를 DI 할때 사용
+@Controller // 1. IoC 2. 파일을 리턴하는 컨트롤러
+public class AuthController {
+
+	
+	private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
+	
+	private final AuthService authService;
+	
+//	public AuthController(AuthService authService) {
+//		this.authService = authService; // 의존성 주입
+//	}
+	
+	@GetMapping("/auth/signin")
+	public String signinForm() {
+		return "/auth/signin";
+	}
+	
+	@GetMapping("/auth/signup")
+	public String signupForm() {
+		return "/auth/signup";
+	}
+	
+	// 예상: 회원가입버튼 -> /auth/siginup -> /auth/signin
+	// 결과: 회원가입버튼 -> 아무것도 안됨 (CSRF 토큰이 있기 때문) (정상적인 사용자인지 구분하기 위함)
+	@PostMapping("/auth/signup") // 회원가입이 성공하면 로그인 페이지로
+	public @ResponseBody String signup(@Valid SignupDto signupDto, BindingResult bindingResult) { // key = value(x-www-form-urlencoded)
+		log.info(signupDto.toString());
+		
+		if(bindingResult.hasErrors()) {
+			Map<String, String> errorMap = new HashMap<>();
+			
+			for(FieldError error : bindingResult.getFieldErrors()) {
+				errorMap.put(error.getField(),error.getDefaultMessage());
+				System.out.println(error.getDefaultMessage());
+			}
+			return "오류남"; // 오류남 메시지 출력
+		}else {
+			// User <- SignupDto
+			User user = signupDto.toEntity();
+			log.info(user.toString());
+			
+			User userEntity = authService.회원가입(user);
+			System.out.println(userEntity);
+			return "/auth/signin"; // /auth/signin 메시지 출력
+		}
+		
+
+	}
+}
+```
+
+### 26. 회원가입-글로벌 예외처리 하기
+
+[AuthController.java](http://AuthController.java) 추가
+
+```java
+package com.cos.photogramstart.web;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.validation.Valid;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Controller;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.service.AuthService;
+import com.cos.photogramstart.web.dte.auth.SignupDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor // final이 걸려있는 모든 생성자 생성 // final 필드를 DI 할때 사용
+@Controller // 1. IoC 2. 파일을 리턴하는 컨트롤러
+public class AuthController {
+
+	
+	private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
+	
+	private final AuthService authService;
+	
+//	public AuthController(AuthService authService) {
+//		this.authService = authService; // 의존성 주입
+//	}
+	
+	@GetMapping("/auth/signin")
+	public String signinForm() {
+		return "/auth/signin";
+	}
+	
+	@GetMapping("/auth/signup")
+	public String signupForm() {
+		return "/auth/signup";
+	}
+	
+	// 예상: 회원가입버튼 -> /auth/siginup -> /auth/signin
+	// 결과: 회원가입버튼 -> 아무것도 안됨 (CSRF 토큰이 있기 때문) (정상적인 사용자인지 구분하기 위함)
+	@PostMapping("/auth/signup") // 회원가입이 성공하면 로그인 페이지로
+	public String signup(@Valid SignupDto signupDto, BindingResult bindingResult) { // key = value(x-www-form-urlencoded)
+		log.info(signupDto.toString());
+		
+		if(bindingResult.hasErrors()) {
+			Map<String, String> errorMap = new HashMap<>();
+			
+			for(FieldError error : bindingResult.getFieldErrors()) {
+				errorMap.put(error.getField(),error.getDefaultMessage());
+				System.out.println(error.getDefaultMessage());
+			}
+			throw new CustomValidationException("유효성 검사 실패함", errorMap);
+		}else {
+			// User <- SignupDto
+			User user = signupDto.toEntity();
+			log.info(user.toString());
+			
+			User userEntity = authService.회원가입(user);
+			System.out.println(userEntity);
+			return "/auth/signin";
+		}
+		
+
+	}
+}
+```
+
+com.cos.photogramstart.handler.ControllerExceptionHandler.java
+
+```java
+package com.cos.photogramstart.handler;
+
+import java.util.Map;
+
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+
+@RestController // 낚아챈 데이터
+@ControllerAdvice // 모든 exception을 낚아챔
+public class ControllerExceptionHandler {
+
+	@ExceptionHandler(CustomValidationException.class)
+	public Map<String,String> vaildationException(CustomValidationException e) {
+		return e.getErrorMap();
+	}
+}
+```
+
+com.cos.photogramstart.handler.ex.CustomValidationException.java
+
+```java
+package com.cos.photogramstart.handler.ex;
+
+import java.util.Map;
+
+public class CustomValidationException extends RuntimeException{
+	
+	// 객체를 구분할 때
+	private static final long serialVersionUID = 1L;
+	
+	private Map<String, String> errorMap;
+	
+	public CustomValidationException(String message, Map<String, String> errorMap) {
+		super(message);
+		this.errorMap = errorMap;
+	}
+	
+	public Map<String,String> getErrorMap() {
+		return errorMap;
+	}
+
+}
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/47c9e36e-7c3a-4196-9979-908053d8a766/Untitled.png)
+
+### 27. 회원가입-공통 응답 DTO 만들기
+
+com.cos.photogramstart.web.dto.CMRespDto.java
+
+```java
+package com.cos.photogramstart.web.dto;
+
+import java.util.Map;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class CMRespDto<T> {
+	private int code; // 1(성공), -1(실패)
+	private String message;
+	private T data;
+	
+}
+```
+
+ControllerExceptionHandler.java
+
+```java
+package com.cos.photogramstart.handler;
+
+import java.util.Map;
+
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+@RestController // 낚아챈 데이터
+@ControllerAdvice // 모든 exception을 낚아챔
+public class ControllerExceptionHandler {
+
+	@ExceptionHandler(CustomValidationException.class)
+	public CMRespDto<?> vaildationException(CustomValidationException e) {
+		return new CMRespDto<Map<String,String>>(-1,e.getMessage(),e.getErrorMap());
+	}
+}
+```
+
+### 28. 회원가입-공통 응답 Script 만들기
+
+com.cos.photogramstart.util.Script.java
+
+```java
+package com.cos.photogramstart.util;
+
+public class Script {
+
+	public static String back(String msg) {
+		StringBuffer sb = new StringBuffer();
+		sb.append("<script>");
+		sb.append("alert('"+msg+"');"); // 경고창 뛰우고
+		sb.append("history.back();"); // 뒤로 돌아감
+		sb.append("</script>");
+		return sb.toString();
+	}
+}
+```
+
+ControllerExceptionHandler.java
+
+```java
+package com.cos.photogramstart.handler;
+
+import java.util.Map;
+
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.util.Script;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+@RestController // 낚아챈 데이터
+@ControllerAdvice // 모든 exception을 낚아챔
+public class ControllerExceptionHandler {
+
+	@ExceptionHandler(CustomValidationException.class)
+	public String vaildationException(CustomValidationException e) {
+		// CMRespDto, Script 비교
+		// 1.클라이언트에게 응답할때는 Script 좋음
+		// 2.Ajax통신 - CMRespDto
+		// 3.Android통신 - CMRespDto
+		return Script.back(e.getErrorMap().toString());
+		//return new CMRespDto<Map<String,String>>(-1,e.getMessage(),e.getErrorMap());
+	}
+}
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/4439489b-a632-4b8a-bf1b-c132fb916b14/Untitled.png)
+
+확인 누르면 다시 로그인 창으로
