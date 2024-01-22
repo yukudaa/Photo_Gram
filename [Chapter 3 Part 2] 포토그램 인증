@@ -1,0 +1,280 @@
+# **[Chapter 3 Part 2] 포토그램 인증**
+
+### 29. 로그인-UserDetailsService 이해하기
+
+get으로 하면 아이디 비밀번호가 주소창에 남기 때문에 post 방식
+
+signin.jsp
+
+```java
+<!--로그인 인풋-->
+<form class="login__input" action="/auth/signin" method="post">
+<input type="text" name="username" placeholder="유저네임" required="required" />
+<input type="password" name="password" placeholder="비밀번호" required="required" />
+<button>로그인</button>
+```
+
+SecurityConfig.java
+
+```java
+package com.cos.photogramstart.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
+@EnableWebSecurity // 해당 파일로 시큐리티를 활성화
+@Configuration // IoC
+public class SecurityConfig extends WebSecurityConfigurerAdapter{
+
+	
+	public BCryptPasswordEncoder encode() {
+		return new BCryptPasswordEncoder();
+	}
+	
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		// super 삭제 -> 기존 시큐리티가 가지고 있는 기능이 다 비활성화됨 (localhost:8080 -> localhost:8080/login 을 비활성화)
+		http.csrf().disable();
+		http.authorizeRequests()
+			.antMatchers("/","/user/**","/image/**","/subscribe/**","/comment/**").authenticated() // 인증이 필요
+			.anyRequest().permitAll() // 그 외는 허용
+			.and()
+			.formLogin()
+			.loginPage("/auth/signin") // 인증이 필요한 url이면 이쪽으로 자동으로 가게 하겠다 // GET
+			.loginProcessingUrl("/auth/signin") // POST -> 스프링 시큐리티가 로그인 프로레스 진행
+			.defaultSuccessUrl("/"); // 로그인이 정상적으로 처리되면 / 로 가게 할게
+	}
+}
+```
+
+com.cos.photogramstart.config.auth.PrincipalDetailsService.java
+
+```java
+package com.cos.photogramstart.config.auth;
+
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+@Service
+public class PrincipalDetailsService implements UserDetailsService{
+
+	@Override
+	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+		System.out.println("나 실행돼?"+username);
+		return null;
+	}
+
+}
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/68a5463a-e0e0-43ca-8292-04e6034a8bc4/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/d622105b-22d5-4984-afb9-4260438b6def/Untitled.png)
+
+UserDetailsService를 PricipalDetailsService로 덮어쓰기
+
+### 30. 로그인-완료
+
+UserRepository.java
+
+```java
+package com.cos.photogramstart.domain.user;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+// 어노테이션이 없어도 JpaRepository를 상속하면 IoC 등록이 자동으로 된다.
+public interface UserRepository extends JpaRepository<User, Integer>{
+	// JPA query method
+	User findByUsername(String username);
+}
+```
+
+PrincipalDetailsService.java
+
+```java
+package com.cos.photogramstart.config.auth;
+
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.domain.user.UserRepository;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Service
+public class PrincipalDetailsService implements UserDetailsService{
+
+	private final UserRepository userRepository;
+	
+	// 1. 패스워드는 알아서 체킹하니깐 신경쓸 필요 없다.
+	// 2. 리턴이 잘 되면 자동으로 UserDetails 타입을 세션으로 만든다.
+	@Override
+	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+		User userEntity = userRepository.findByUsername(username);
+		
+		if(userEntity == null) {
+			return null;
+		}else {
+			return new PrincipalDatails(userEntity);
+		}
+
+	}
+
+}
+```
+
+com.cos.photogramstart.config.auth.PrincipalDatails.java
+
+```java
+package com.cos.photogramstart.config.auth;
+
+import java.util.ArrayList;
+import java.util.Collection;
+
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import com.cos.photogramstart.domain.user.User;
+
+import lombok.Data;
+
+@Data
+public class PrincipalDatails implements UserDetails{
+
+	private static final long serialVersionUID = 1L;
+	
+	private User user;
+	
+	public PrincipalDatails(User user) {
+		this.user = user;
+	}
+	
+	// 권한 : 한개가 아닐 수 있음. (3개 이상의 권한을 들고 있을수 있음)
+	// 우리는 권한 1개만 할꺼임
+	@Override
+	public Collection<? extends GrantedAuthority> getAuthorities() {
+		// TODO Auto-generated method stub
+		
+		Collection<GrantedAuthority> collector = new ArrayList<>();
+		collector.add(() -> { return user.getRole(); });
+		return collector;
+	}
+
+	@Override
+	public String getPassword() {
+		// TODO Auto-generated method stub
+		return user.getPassword();
+	}
+
+	@Override
+	public String getUsername() {
+		// TODO Auto-generated method stub
+		return user.getUsername();
+	}
+
+	@Override
+	public boolean isAccountNonExpired() {
+		// TODO Auto-generated method stub
+		return true;
+	}
+
+	@Override
+	public boolean isAccountNonLocked() {
+		// TODO Auto-generated method stub
+		return true;
+	}
+
+	@Override
+	public boolean isCredentialsNonExpired() {
+		// TODO Auto-generated method stub
+		return true;
+	}
+
+	@Override
+	public boolean isEnabled() {
+		// TODO Auto-generated method stub
+		return true;
+	}
+
+}
+```
+
+### 31. 로그인-View 연결하기
+
+ImageController.java
+
+```java
+package com.cos.photogramstart.web;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
+public class ImageController {
+
+	@GetMapping({"/","/image/story"})
+	public String story() {
+		return "image/story";
+	}
+	
+	@GetMapping({"/image/popular"})
+	public String popular() {
+		return "image/popular";
+	}
+	
+	@GetMapping({"/image/upload"})
+	public String upload() {
+		return "image/upload";
+	}
+}
+```
+
+UserController.java
+
+```java
+package com.cos.photogramstart.web;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
+@Controller
+public class UserController {
+
+	@GetMapping("/user/{id}")
+	public String profile(@PathVariable int id) {
+		return "user/profile";
+	}
+	
+	@GetMapping("/user/{id}/update")
+	public String update(@PathVariable int id) {
+		return "user/update";
+	}
+}
+```
+
+이제 로그인 하면 잘 뜸
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/92bad8ed-1efb-477b-8840-ddafac4507aa/Untitled.png)
+
+### 32. 로그인-세션정보 확인해보기
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/7d40b66b-9746-4d29-818f-7cdd234d1b4f/Untitled.png)
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/9f624b0a-f1f3-4429-bfd3-c52f06f41dd4/Untitled.png)
+
+세션을 찾으려면 session 안에 securityContextholder 안에 authentication 안에 PrincipalDetails 안에 user오브젝트에서 찾아야함 (최악)
+
+그래서 @AuthenticationPrincipal PrincipalDatails principalDatails 이것을 사용
+
+UserController.java
