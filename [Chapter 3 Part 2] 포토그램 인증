@@ -279,6 +279,7 @@ public class UserController {
 
 UserController.java
 
+```java
 package com.cos.photogramstart.web;
 
 import org.springframework.security.core.Authentication;
@@ -310,4 +311,677 @@ public class UserController {
 		
 		return "user/update";
 	}
+}
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/ebf57d0d-a607-446c-8b28-49d39eba7e8d/Untitled.png)
+
+### 33. 회원정보수정-시큐리티 태그라이브러리
+
+모델에 넘기는 방법도 있지만 .jsp 는 태그를 이용해 쉽게 가능
+
+header.jsp
+
+```java
+<sec:authorize access="isAuthenticated()">
+	<sec:authentication property="principal" var ="pricipal"/>
+</sec:authorize>
+```
+
+update.jsp
+
+```java
+<%@ page language="java" contentType="text/html; charset=UTF-8"
+	pageEncoding="UTF-8"%>
+
+<%@ include file="../layout/header.jsp"%>
+
+<!--프로필셋팅 메인-->
+<main class="main">
+	<!--프로필셋팅 섹션-->
+	<section class="setting-container">
+		<!--프로필셋팅 아티클-->
+		<article class="setting__content">
+
+			<!--프로필셋팅 아이디영역-->
+			<div class="content-item__01">
+				<div class="item__img">
+					<img src="#" onerror="this.src='/images/person.jpeg'" />
+				</div>
+				<div class="item__username">
+					<h2>${principal.user.username}</h2>
+				</div>
+			</div>
+			<!--프로필셋팅 아이디영역end-->
+
+			<!--프로필 수정-->
+			<form id="profileUpdate"">
+				<div class="content-item__02">
+					<div class="item__title">이름</div>
+					<div class="item__input">
+						<input type="text" name="name" placeholder="이름"
+							value="${principal.user.name}" />
+					</div>
+				</div>
+				<div class="content-item__03">
+					<div class="item__title">유저네임</div>
+					<div class="item__input">
+						<input type="text" name="username" placeholder="유저네임"
+							value="${principal.user.username}" readonly="readonly" />
+					</div>
+				</div>
+				<div class="content-item__04">
+					<div class="item__title">패스워드</div>
+					<div class="item__input">
+						<input type="password" name="password" placeholder="패스워드"  />
+					</div>
+				</div>
+				<div class="content-item__05">
+					<div class="item__title">웹사이트</div>
+					<div class="item__input">
+						<input type="text" name="website" placeholder="웹 사이트"
+							value="${principal.user.website}" />
+					</div>
+				</div>
+				<div class="content-item__06">
+					<div class="item__title">소개</div>
+					<div class="item__input">
+						<textarea name="bio" id="" rows="3">${principal.user.bio}</textarea>
+					</div>
+				</div>
+				<div class="content-item__07">
+					<div class="item__title"></div>
+					<div class="item__input">
+						<span><b>개인정보</b></span> <span>비즈니스나 반려동물 등에 사용된 계정인 경우에도
+							회원님의 개인 정보를 입력하세요. 공개 프로필에는 포함되지 않습니다.</span>
+					</div>
+				</div>
+				<div class="content-item__08">
+					<div class="item__title">이메일</div>
+					<div class="item__input">
+						<input type="text" name="email" placeholder="이메일"
+							value="${principal.user.email}" readonly="readonly" />
+					</div>
+				</div>
+				<div class="content-item__09">
+					<div class="item__title">전회번호</div>
+					<div class="item__input">
+						<input type="text" name="tel" placeholder="전화번호"
+							value="${principal.user.phone}" />
+					</div>
+				</div>
+				<div class="content-item__10">
+					<div class="item__title">성별</div>
+					<div class="item__input">
+						<input type="text" name="gender" value="${principal.user.gender}" />
+					</div>
+				</div>
+
+				<!--제출버튼-->
+				<div class="content-item__11">
+					<div class="item__title"></div>
+					<div class="item__input">
+						<button>제출</button>
+					</div>
+				</div>
+				<!--제출버튼end-->
+
+			</form>
+			<!--프로필수정 form end-->
+		</article>
+	</section>
+</main>
+
+<script src="/js/update.js"></script>
+
+<%@ include file="../layout/footer.jsp"%>
+```
+
+### 34. 회원정보수정-Ajax 사용하기
+
+update.js
+
+```java
+// (1) 회원정보 수정
+function update(userId, event) {
+	let data = $("#profileUpdate").serialize();
+	
+	console.log(data);
+	
+	$.ajax({
+		type:"put",
+		url:'/api/user/${userId}',
+		data:data,
+		contentType:"application/x-www-form-urlencoded;charset=utf-8",
+		dataType:"json"
+	}).done(res=>{
+		console.log("update 성공");
+	}).fail(error=>{
+		console.log("update 실패");
+	});
+	
+}
+```
+
+com.cos.photogramstart.web.dto.user.UserUpdateDto.java
+
+```java
+package com.cos.photogramstart.web.dto.user;
+
+import com.cos.photogramstart.domain.user.User;
+
+import lombok.Data;
+
+@Data
+public class UserUpdateDto {
+
+	private String name; // 필수
+	private String password; // 필수
+	private String website; 
+	private String bio;
+	private String phone;
+	private String gender;
+	
+	// 조금 위험함. 코드 수정이 필요할 예정
+	public User toEntity() {
+		return User.builder()
+				.name(name)
+				.password(password)
+				.website(website)
+				.bio(bio)
+				.phone(phone)
+				.gender(gender)
+				.build();
+	}
+}
+```
+
+com.cos.photogramstart.web.api.UserApiController.java
+
+```java
+package com.cos.photogramstart.web.api;
+
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.web.dto.user.UserUpdateDto;
+
+@RestController
+public class UserApiController {
+
+	@PutMapping("/api/user/{id}")
+	public String update(UserUpdateDto userUpdateDto) {
+		System.out.println(userUpdateDto);
+		return "OK";
+	}
+}
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/72e6e80b-1173-4985-b115-4499855afd93/Untitled.png)
+
+### 35. 회원정보수정-완료
+
+UserApiController.java
+
+```java
+package com.cos.photogramstart.web.api;
+
+import org.springframework.security.web.bind.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.service.UserService;
+import com.cos.photogramstart.web.dto.CMRespDto;
+import com.cos.photogramstart.web.dto.user.UserUpdateDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@RestController
+public class UserApiController {
+
+	private final UserService userService;
+	
+	@PutMapping("/api/user/{id}")
+	public CMRespDto<?> update(@PathVariable int id, UserUpdateDto userUpdateDto, @AuthenticationPrincipal PrincipalDatails principalDatails) {
+		System.out.println(userUpdateDto);
+		User userEntity = userService.회원수정(id, userUpdateDto.toEntity());
+		
+		principalDatails.setUser(userEntity); // 세션 정보 변경(바뀌면 '남'이 뜨게 (gender))
+		
+		return new CMRespDto<>(1,"회원수정완료",userEntity);
+	}
+}
+```
+
+com.cos.photogramstart.service.UserService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.domain.user.UserRepository;
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class UserService {
+	
+	private final UserRepository userRepository;
+	private final BCryptPasswordEncoder bCryptPasswordEncoder;
+	
+	@Transactional
+	public User 회원수정(int id, User user) {
+		// 1. 영속화
+		User userEntity = userRepository.findById(id).get(); // 1. 무조건 찾았다. 걱정마 get() // 2. 못찾았어 익섹션 발동시킬게 orElseThrow()
+
+		// 2. 영속화된 오브젝트를 수정 - 더티체킹 (업데이트 완료)
+		userEntity.setName(user.getName());
+		
+		String rawPassword = user.getPassword();
+		String encPassword = bCryptPasswordEncoder.encode(rawPassword);
+		
+		userEntity.setPassword(encPassword);
+		userEntity.setBio(user.getBio());
+		userEntity.setWebsite(user.getWebsite());
+		userEntity.setPhone(user.getPhone());
+		userEntity.setGender(user.getGender());
+		return userEntity;
+	} // 더티체킹이 일어나서 업데이트가 완료됨.
+}
+```
+
+update.js
+
+```java
+// (1) 회원정보 수정
+function update(userId, event) {
+	let data = $("#profileUpdate").serialize();
+	
+	console.log(data);
+	
+	$.ajax({
+		type:"put",
+		url:'/api/user/${userId}',
+		data:data,
+		contentType:"application/x-www-form-urlencoded;charset=utf-8",
+		dataType:"json"
+	}).done(res=>{
+		console.log("update 성공");
+		location.href='/user/${userId}'; // 수정하면 메인으로
+	}).fail(error=>{
+		console.log("update 실패");
+	});
+	
+}
+```
+
+### 36. 회원정보수정-유효성 검사하기
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/9c3e1d49-9131-4822-8c4b-072eb12d6043/Untitled.png)
+
+1) 값 검증 해보기
+
+update.jsp
+
+```java
+required="required" 추가 (반드시 기입해야하는거)
+```
+
+UserApiController.java
+
+```java
+package com.cos.photogramstart.web.api;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.validation.Valid;
+
+import org.springframework.security.web.bind.annotation.AuthenticationPrincipal;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.handler.ex.CustomValidationApiException;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.service.UserService;
+import com.cos.photogramstart.web.dto.CMRespDto;
+import com.cos.photogramstart.web.dto.user.UserUpdateDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@RestController
+public class UserApiController {
+
+	private final UserService userService;
+	
+	@PutMapping("/api/user/{id}")
+	public CMRespDto<?> update(
+			@PathVariable int id, 
+			@Valid UserUpdateDto userUpdateDto, 
+			BindingResult bindingResult, // 꼭 @Valid가 적혀 있는 다음 파라미터에 적어야함
+			@AuthenticationPrincipal PrincipalDatails principalDatails) {
+		
+		if(bindingResult.hasErrors()) {
+			Map<String, String> errorMap = new HashMap<>();
+			
+			for(FieldError error : bindingResult.getFieldErrors()) {
+				errorMap.put(error.getField(),error.getDefaultMessage());
+				System.out.println(error.getDefaultMessage());
+			}
+			throw new CustomValidationApiException("유효성 검사 실패함", errorMap);
+		}else {
+			System.out.println(userUpdateDto);
+			User userEntity = userService.회원수정(id, userUpdateDto.toEntity());
+			
+			principalDatails.setUser(userEntity); // 세션 정보 변경(바뀌면 '남'이 뜨게 (gender))
+			
+			return new CMRespDto<>(1,"회원수정완료",userEntity);
+		}
+	}
+}
+```
+
+AuthController.java
+
+```java
+package com.cos.photogramstart.web;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.validation.Valid;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Controller;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.service.AuthService;
+import com.cos.photogramstart.web.dto.auth.SignupDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor // final이 걸려있는 모든 생성자 생성 // final 필드를 DI 할때 사용
+@Controller // 1. IoC 2. 파일을 리턴하는 컨트롤러
+public class AuthController {
+
+	
+	private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
+	
+	private final AuthService authService;
+	
+//	public AuthController(AuthService authService) {
+//		this.authService = authService; // 의존성 주입
+//	}
+	
+	@GetMapping("/auth/signin")
+	public String signinForm() {
+		return "/auth/signin";
+	}
+	
+	@GetMapping("/auth/signup")
+	public String signupForm() {
+		return "/auth/signup";
+	}
+	
+	// 예상: 회원가입버튼 -> /auth/siginup -> /auth/signin
+	// 결과: 회원가입버튼 -> 아무것도 안됨 (CSRF 토큰이 있기 때문) (정상적인 사용자인지 구분하기 위함)
+	@PostMapping("/auth/signup") // 회원가입이 성공하면 로그인 페이지로
+	public String signup(@Valid SignupDto signupDto, BindingResult bindingResult) { // key = value(x-www-form-urlencoded)
+		log.info(signupDto.toString());
+		
+		if(bindingResult.hasErrors()) {
+			Map<String, String> errorMap = new HashMap<>();
+			
+			for(FieldError error : bindingResult.getFieldErrors()) {
+				errorMap.put(error.getField(),error.getDefaultMessage());
+				System.out.println(error.getDefaultMessage());
+			}
+			throw new CustomValidationException("유효성 검사 실패함", errorMap);
+		}else {
+			// User <- SignupDto
+			User user = signupDto.toEntity();
+			log.info(user.toString());
+			
+			User userEntity = authService.회원가입(user);
+			System.out.println(userEntity);
+			return "/auth/signin";
+		}
+		
+
+	}
+}
+```
+
+com.cos.photogramstart.handler.ex.CustomValidationApiException.java
+
+```java
+package com.cos.photogramstart.handler.ex;
+
+import java.util.Map;
+
+public class CustomValidationApiException extends RuntimeException{
+	
+	// 객체를 구분할 때
+	private static final long serialVersionUID = 1L;
+	
+	private Map<String, String> errorMap;
+	
+	public CustomValidationApiException(String message, Map<String, String> errorMap) {
+		super(message);
+		this.errorMap = errorMap;
+	}
+	
+	public Map<String,String> getErrorMap() {
+		return errorMap;
+	}
+
+}
+```
+
+ControllerExceptionHandler.java
+
+```java
+package com.cos.photogramstart.handler;
+
+import java.util.Map;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.handler.ex.CustomValidationApiException;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.util.Script;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+@RestController // 낚아챈 데이터
+@ControllerAdvice // 모든 exception을 낚아챔
+public class ControllerExceptionHandler {
+
+	@ExceptionHandler(CustomValidationException.class)
+	public String vaildationException(CustomValidationException e) {
+		// CMRespDto, Script 비교
+		// 1.클라이언트에게 응답할때는 Script 좋음
+		// 2.Ajax통신 - CMRespDto
+		// 3.Android통신 - CMRespDto
+		return Script.back(e.getErrorMap().toString());
+		//return new CMRespDto<Map<String,String>>(-1,e.getMessage(),e.getErrorMap());
+	}
+	
+	@ExceptionHandler(CustomValidationApiException.class)
+	public ResponseEntity<?> vaildationApiException(CustomValidationApiException e) {
+		return new ResponseEntity<>(new CMRespDto<>(-1,e.getMessage(),e.getErrorMap()),HttpStatus.BAD_REQUEST);
+	}
+}
+```
+
+### 37. 회원정보수정-Optional 처리하기
+
+2) 해보기
+
+UserService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import java.util.function.Supplier;
+
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.domain.user.UserRepository;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class UserService {
+	
+	private final UserRepository userRepository;
+	private final BCryptPasswordEncoder bCryptPasswordEncoder;
+	
+	@Transactional
+	public User 회원수정(int id, User user) {
+		// 1. 영속화
+		// 1. 무조건 찾았다. 걱정마 get() // 2. 못찾았어 익섹션 발동시킬게 orElseThrow()
+		User userEntity = userRepository.findById(id).orElseThrow(()->{return new CustomValidationException("찾을 수 없는 ID 입니다.");}); 
+
+		// 2. 영속화된 오브젝트를 수정 - 더티체킹 (업데이트 완료)
+		userEntity.setName(user.getName());
+		
+		String rawPassword = user.getPassword();
+		String encPassword = bCryptPasswordEncoder.encode(rawPassword);
+		
+		userEntity.setPassword(encPassword);
+		userEntity.setBio(user.getBio());
+		userEntity.setWebsite(user.getWebsite());
+		userEntity.setPhone(user.getPhone());
+		userEntity.setGender(user.getGender());
+		return userEntity;
+	} // 더티체킹이 일어나서 업데이트가 완료됨.
+}
+```
+
+ControllerExceptionHandler.java
+
+```java
+package com.cos.photogramstart.handler;
+
+import java.util.Map;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.handler.ex.CustomValidationApiException;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.util.Script;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+@RestController // 낚아챈 데이터
+@ControllerAdvice // 모든 exception을 낚아챔
+public class ControllerExceptionHandler {
+
+	@ExceptionHandler(CustomValidationException.class)
+	public String vaildationException(CustomValidationException e) {
+		// CMRespDto, Script 비교
+		// 1.클라이언트에게 응답할때는 Script 좋음
+		// 2.Ajax통신 - CMRespDto
+		// 3.Android통신 - CMRespDto
+		return Script.back(e.getErrorMap().toString());
+		//return new CMRespDto<Map<String,String>>(-1,e.getMessage(),e.getErrorMap());
+	}
+	
+	@ExceptionHandler(CustomValidationApiException.class)
+	public ResponseEntity<?> vaildationApiException(CustomValidationApiException e) {
+		return new ResponseEntity<>(new CMRespDto<>(-1,e.getMessage(),e.getErrorMap()),HttpStatus.BAD_REQUEST);
+	}
+}
+```
+
+CustomValidationException.java
+
+```java
+package com.cos.photogramstart.handler.ex;
+
+import java.util.Map;
+
+public class CustomValidationException extends RuntimeException{
+	
+	// 객체를 구분할 때
+	private static final long serialVersionUID = 1L;
+	
+	private Map<String, String> errorMap;
+	
+	public CustomValidationException(String message) {
+		super(message);
+	}
+	
+	public CustomValidationException(String message, Map<String, String> errorMap) {
+		super(message);
+		this.errorMap = errorMap;
+	}
+	
+	public Map<String,String> getErrorMap() {
+		return errorMap;
+	}
+
+}
+```
+
+update.js
+// (1) 회원정보 수정
+function update(userId, event) {
+	event.preventDefault(); // 폼태크 액샨을 막기!!
+
+	let data = $("#profileUpdate").serialize();
+
+	console.log(data);
+
+	$.ajax({
+		type: "put",
+		url: '/api/user/${userId}',
+		data: data,
+		contentType: "application/x-www-form-urlencoded;charset=utf-8",
+		dataType: "json"
+	}).done(res => { // HttpStatus 상태코드 200번대
+		console.log("update 성공");
+		location.href = '/user/${userId}'; // 수정하면 메인으로
+	}).fail(error => { // HttpStatus 상태코드 200번대 아닐 때
+		if (error.data == null) {
+			alert(error.responseJSON.message);
+		} else {
+			alert(JSON.stringify(error.responseJSON.data));
+		}
+	});
+
 }
