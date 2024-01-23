@@ -1,0 +1,291 @@
+# [Chapter 4] 구독하기
+
+### 38. 구독하기-연관관계 개념잡기
+
+1) FK는 Many가 가진다.
+
+2) N:M의 관계는 중간 테이블이 가진다.
+
+2-1) 중간 테이블은 N이 되고 옆은 1이 된다.
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/4a23947a-d666-414f-8eb6-d6e2de02accb/Untitled.png)
+
+### 39. 구독하기-모델 만들기
+
+com.cos.photogramstart.domain.user.subscribe.Subscribe.java
+
+```java
+package com.cos.photogramstart.domain.user.subscribe;
+
+import java.time.LocalDateTime;
+
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+import javax.persistence.PrePersist;
+import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
+
+import com.cos.photogramstart.domain.user.User;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Builder
+@Entity // DB에 테이블을 생성
+@Data
+@NoArgsConstructor // 빈 생성자
+@AllArgsConstructor // 전체 생성자
+@Table(
+	uniqueConstraints = {
+			@UniqueConstraint(
+					name="subscribe_kr",
+					columnNames = {"fromUserId","toUserId"}
+					
+					)
+	}
+) // 유니크
+public class Subscribe {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY) // 번호 증가 전략이 데이터베이스를 따라간다.
+	private int id;
+	
+	@JoinColumn(name="formUserId") // 이렇게 컬럼명 만들어! 니 말대로 만들지 말고
+	@ManyToOne
+	private User fromUser;
+	
+	@JoinColumn(name="toUserId")
+	@ManyToOne
+	private User toUser;
+	
+	private LocalDateTime createDate;
+	
+	@PrePersist // DB에 Insert가 되기 직전에 실행
+	public void createDate() {
+		this.createDate = LocalDateTime.now();
+	}
+}
+```
+
+com.cos.photogramstart.domain.user.subscribe.SubscribeRepository.java
+
+```java
+package com.cos.photogramstart.domain.user.subscribe;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface SubscribeRepository extends JpaRepository<Subscribe, Integer>{
+
+}
+```
+
+### 40. 구독하기-구독,구독취소 API 만들기
+
+web.api: 어떤 페이지나 파일을 리턴하는게 아니고 데이터만 리턴하는 컨트롤러 
+
+com.cos.photogramstart.web.api.SubscribeApiController.java
+
+```java
+package com.cos.photogramstart.web.api;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.service.SubscribeService;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RestController
+@RequiredArgsConstructor
+public class SubscribeApiController {
+
+	private final SubscribeService subscribeService;
+	
+	@PostMapping("/api/subscribe/{toUserId}")
+	public ResponseEntity<?> subscribe(@AuthenticationPrincipal PrincipalDatails principalDatails,
+			@PathVariable int toUserId) {
+		subscribeService.구독하기(principalDatails.getUser().getId(),toUserId);
+		return new ResponseEntity<>(new CMRespDto<>(1,"구독하기 성공",null),HttpStatus.OK);
+	}
+	
+	@DeleteMapping("/api/subscribe/{toUserId}")
+	public ResponseEntity<?> unSubscribe(@AuthenticationPrincipal PrincipalDatails principalDatails,
+			@PathVariable int toUserId) {
+		subscribeService.구독취소하기(principalDatails.getUser().getId(), toUserId);
+		return new ResponseEntity<>(new CMRespDto<>(1,"구독취소하기 성공",null),HttpStatus.OK);
+	}
+}
+```
+
+com.cos.photogramstart.service.SubscribeService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.cos.photogramstart.domain.user.subscribe.Subscribe;
+import com.cos.photogramstart.domain.user.subscribe.SubscribeRepository;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Service
+public class SubscribeService {
+
+	private final SubscribeRepository subscribeRepository;
+	
+	@Transactional
+	public void 구독하기(int fromUserId, int toUserId) {
+		subscribeRepository.mSubscribe(fromUserId, toUserId);
+	}
+	
+	@Transactional
+	public void 구독취소하기(int fromUserId, int toUserId) {
+		subscribeRepository.mUnSubscribe(fromUserId, toUserId);
+	}
+}
+```
+
+SubscribeRepository.java
+
+```java
+package com.cos.photogramstart.domain.user.subscribe;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+
+public interface SubscribeRepository extends JpaRepository<Subscribe, Integer>{
+
+	@Modifying // INSERT, DELETE, UPDATE를 네이티브 쿼리로 작성하러면 해당 어노테이션 필요!!
+	@Query(value = "INSERT INTO subscribe(fromUserId, toUserId, createDate) VALUES(:fromUserId,:toUserId,now())",nativeQuery = true)
+	void mSubscribe(int fromUserId, int toUserId); 
+	
+	@Modifying
+	@Query(value = "DELETE FROM subscribe WHERE fromUserId=:fromUserId AND toUserId = :toUserId",nativeQuery = true)
+	void mUnSubscribe(int fromUserId, int toUserId); 
+}
+```
+
+### 41. 구독하기-예외처리하기
+
+com.cos.photogramstart.handler.ex.CustomApiException.java
+
+```java
+package com.cos.photogramstart.handler.ex;
+
+import java.util.Map;
+
+public class CustomApiException extends RuntimeException {
+
+	// 객체를 구분할 때
+	private static final long serialVersionUID = 1L;
+
+	public CustomApiException(String message) {
+		super(message);
+
+	}
+
+}
+```
+
+SubscribeService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.cos.photogramstart.domain.user.subscribe.Subscribe;
+import com.cos.photogramstart.domain.user.subscribe.SubscribeRepository;
+import com.cos.photogramstart.handler.ex.CustomApiException;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Service
+public class SubscribeService {
+
+	private final SubscribeRepository subscribeRepository;
+
+	@Transactional
+	public void 구독하기(int fromUserId, int toUserId) {
+		try {
+			subscribeRepository.mSubscribe(fromUserId, toUserId);
+		} catch (Exception e) {
+			throw new CustomApiException("이미 구독을 하였습니다.");
+		}
+	}
+
+	@Transactional
+	public void 구독취소하기(int fromUserId, int toUserId) {
+		subscribeRepository.mUnSubscribe(fromUserId, toUserId);
+	}
+}
+```
+
+ControllerExceptionHandler.java
+
+```java
+package com.cos.photogramstart.handler;
+
+import java.util.Map;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.handler.ex.CustomApiException;
+import com.cos.photogramstart.handler.ex.CustomValidationApiException;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.util.Script;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+@RestController // 낚아챈 데이터
+@ControllerAdvice // 모든 exception을 낚아챔
+public class ControllerExceptionHandler {
+
+	// validation 오류는 이거나 밑에꺼 쓰고
+	@ExceptionHandler(CustomValidationException.class)
+	public String vaildationException(CustomValidationException e) {
+		// CMRespDto, Script 비교
+		// 1.클라이언트에게 응답할때는 Script 좋음
+		// 2.Ajax통신 - CMRespDto
+		// 3.Android통신 - CMRespDto
+		return Script.back(e.getErrorMap().toString());
+		//return new CMRespDto<Map<String,String>>(-1,e.getMessage(),e.getErrorMap());
+	}
+	
+	@ExceptionHandler(CustomValidationApiException.class)
+	public ResponseEntity<?> vaildationApiException(CustomValidationApiException e) {
+		return new ResponseEntity<>(new CMRespDto<>(-1,e.getMessage(),e.getErrorMap()),HttpStatus.BAD_REQUEST);
+	}
+	
+	// 그 외의 모든 오류는 이걸 쓰면 될듯
+	@ExceptionHandler(CustomApiException.class)
+	public ResponseEntity<?> apiException(CustomApiException e) {
+		return new ResponseEntity<>(new CMRespDto<>(-1,e.getMessage(),null),HttpStatus.BAD_REQUEST);
+	}
+}
+```
+
+### 42. 구독하기-API 주소 시큐리티 설정하기
+"/api/**"
