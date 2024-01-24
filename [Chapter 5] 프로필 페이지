@@ -1,0 +1,387 @@
+# [Chapter 5] 프로필 페이지
+
+### 43. 프로필 페이지-Image 모델 만들기
+
+1. 포토 이미지 등록
+- multipart/form-data
+- UUID
+
+1. 포토 이미지 렌더링
+
+com.cos.photogramstart.domain.image.Image.java
+
+```java
+package com.cos.photogramstart.domain.image;
+
+import java.time.LocalDateTime;
+
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+import javax.persistence.PrePersist;
+
+import com.cos.photogramstart.domain.subscribe.Subscribe;
+import com.cos.photogramstart.domain.user.User;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Builder
+@Entity // DB에 테이블을 생성
+@Data
+@NoArgsConstructor // 빈 생성자
+@AllArgsConstructor // 전체 생성자
+public class Image { // N
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY) // 번호 증가 전략이 데이터베이스를 따라간다.
+	private int id;
+	private String caption; // 오늘 나 너무 피곤해!!
+	private String postImageUrl; // 사진을 전송받아서 그 사진을 서버에 특정 폴더에 저장 - DB에 그 저장된 경로를 insert
+	
+	@JoinColumn(name = "userId")
+	@ManyToOne
+	private User user; // 1
+	
+	// 이미지 좋아요
+	
+	// 댓글
+	
+	private LocalDateTime createDate;
+	@PrePersist // DB에 Insert가 되기 직전에 실행
+	public void createDate() {
+		this.createDate = LocalDateTime.now();
+	}
+	
+}
+```
+
+com.cos.photogramstart.domain.image.ImageRepository.java
+
+```java
+package com.cos.photogramstart.domain.image;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface ImageRepository extends JpaRepository<Image,Integer> {
+
+}
+```
+
+### 44. 프로필 페이지-Image 서버에 업로드하기
+
+application.yml
+
+```java
+file:
+  path: C:/workspace/springbootwork/upload/
+```
+
+ImageController.java
+
+```java
+package com.cos.photogramstart.web;
+
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.service.ImageService;
+import com.cos.photogramstart.web.dto.image.ImageUploadDto;
+
+import lombok.RequiredArgsConstructor;
+
+@Controller
+@RequiredArgsConstructor
+public class ImageController { 
+	
+	private final ImageService imageService;
+
+	@GetMapping({"/","/image/story"})
+	public String story() {
+		return "image/story";
+	}
+	
+	@GetMapping({"/image/popular"})
+	public String popular() {
+		return "image/popular";
+	}
+	
+	@GetMapping({"/image/upload"})
+	public String upload() {
+		return "image/upload";
+	}
+	
+	// 사용자에게 데이터를 받고 service에게 호출 해주면 된다.
+	@PostMapping("/image")
+	public String imageUpload(ImageUploadDto imageUploadDto, @AuthenticationPrincipal PrincipalDatails principalDatails) {
+		// 서비스 호출
+		imageService.사진업로드(imageUploadDto, principalDatails);
+		
+		return "redirect:/user/"+principalDatails.getUser().getId(); // 업로드를 딱 누르면 /user/{?}로 오게
+	}
+}
+```
+
+ImageService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.image.ImageRepository;
+import com.cos.photogramstart.web.dto.image.ImageUploadDto;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class ImageService {
+
+	private final ImageRepository imageRepository;
+	
+	@Value("${file.path}")
+	private String uploadFolder; // application.yml의 값 가져오기
+	
+	public void 사진업로드(ImageUploadDto imageUploadDto, PrincipalDatails principalDatails) {
+		UUID uuid = UUID.randomUUID(); // uuid
+		String imageFileName = uuid+"_"+imageUploadDto.getFile().getOriginalFilename(); // 실제 file 이름이 들어감 1.jpg
+		System.out.println("이미지 파일이름: "+imageFileName);
+		
+		Path imageFilePath = Paths.get(uploadFolder+imageFileName); // 경로 + file명
+		
+		// 통신, I/O -> 예외가 발생할 수 있다.
+		try {
+			Files.write(imageFilePath, imageUploadDto.getFile().getBytes());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+}
+```
+
+upload.jsp
+
+```java
+<!--사진업로드 Form-->
+<form class="upload-form" action="/image" method="post" enctype="multipart/form-data"> <!-- file과 key-value 데이터 모두 전송하고 싶을떄 multipart/form-data 사용 -->
+     <input  type="file" name="file"  onchange="imageChoose(this)"/>
+     <div class="upload-img">
+           <img src="/images/person.jpeg" alt="" id="imageUploadPreview" />
+     </div>
+```
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/d2ea23d3-ee8e-4a52-9e26-c58777023ac2/Untitled.png)
+
+### 45. 프로필 페이지-upload폴더를 프로젝트 외부에 두는 이유
+
+deploy 시간차 문제
+
+![Untitled](https://prod-files-secure.s3.us-west-2.amazonaws.com/939d504d-4d23-4d70-9be0-1a628feb8af7/fd3c0004-8a4f-406f-9a46-a179666f724d/Untitled.png)
+
+### 46. 프로필 페이지-Image DB에 업로드하기
+
+ImageService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.image.Image;
+import com.cos.photogramstart.domain.image.ImageRepository;
+import com.cos.photogramstart.web.dto.image.ImageUploadDto;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class ImageService {
+
+	private final ImageRepository imageRepository;
+	
+	@Value("${file.path}")
+	private String uploadFolder; // application.yml의 값 가져오기
+	
+	public void 사진업로드(ImageUploadDto imageUploadDto, PrincipalDatails principalDatails) {
+		UUID uuid = UUID.randomUUID(); // uuid
+		String imageFileName = uuid+"_"+imageUploadDto.getFile().getOriginalFilename(); // 실제 file 이름이 들어감 1.jpg
+		System.out.println("이미지 파일이름: "+imageFileName);
+		
+		Path imageFilePath = Paths.get(uploadFolder+imageFileName); // 경로 + file명
+		
+		// 통신, I/O -> 예외가 발생할 수 있다.
+		try {
+			Files.write(imageFilePath, imageUploadDto.getFile().getBytes());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+		// image 테이블에 저장
+		Image image = imageUploadDto.toEntity(imageFileName, principalDatails.getUser()); // 5cf6237d-c404-43e5-836b-e55413ed0e49_bag.jpeg
+		Image imageEntity = imageRepository.save(image);
+		
+		System.out.println(imageEntity);
+	}
+}
+```
+
+ImageUploadDto.java
+
+```java
+package com.cos.photogramstart.web.dto.image;
+
+import org.springframework.web.multipart.MultipartFile;
+
+import com.cos.photogramstart.domain.image.Image;
+import com.cos.photogramstart.domain.user.User;
+
+import lombok.Data;
+
+@Data
+public class ImageUploadDto { // 이미지를 업로드 하기 위한 Dto
+
+	private MultipartFile file;
+	private String caption;
+	
+	public Image toEntity(String postImageUrl, User user) {
+		return Image.builder()
+				.caption(caption)
+				.postImageUrl(postImageUrl)
+				.user(user)
+				.build();
+	}
+}upload.jsp  required 추가(프론트단에서 막기)
+```
+
+### 47. 프로필 페이지-Image 유효성 검사하기
+
+ImageController.java
+
+```java
+package com.cos.photogramstart.web;
+
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.service.ImageService;
+import com.cos.photogramstart.web.dto.image.ImageUploadDto;
+
+import lombok.RequiredArgsConstructor;
+
+@Controller
+@RequiredArgsConstructor
+public class ImageController { 
+	
+	private final ImageService imageService;
+
+	@GetMapping({"/","/image/story"})
+	public String story() {
+		return "image/story";
+	}
+	
+	@GetMapping({"/image/popular"})
+	public String popular() {
+		return "image/popular";
+	}
+	
+	@GetMapping({"/image/upload"})
+	public String upload() {
+		return "image/upload";
+	}
+	
+	// 사용자에게 데이터를 받고 service에게 호출 해주면 된다.
+	@PostMapping("/image")
+	public String imageUpload(ImageUploadDto imageUploadDto, @AuthenticationPrincipal PrincipalDatails principalDatails) {
+		
+		if(imageUploadDto.getFile().isEmpty()) {
+			throw new CustomValidationException("이미지가 첨부되지 않았습니다.",null);
+		}
+		
+		// 서비스 호출
+		imageService.사진업로드(imageUploadDto, principalDatails);
+		
+		return "redirect:/user/"+principalDatails.getUser().getId(); // 업로드를 딱 누르면 /user/{?}로 오게
+	}
+}
+```
+
+ControllerExceptionHandler.java
+
+```java
+package com.cos.photogramstart.handler;
+
+import java.util.Map;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.handler.ex.CustomApiException;
+import com.cos.photogramstart.handler.ex.CustomValidationApiException;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.util.Script;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+@RestController // 낚아챈 데이터
+@ControllerAdvice // 모든 exception을 낚아챔
+public class ControllerExceptionHandler {
+
+	// validation 오류는 이거나 밑에꺼 쓰고
+	@ExceptionHandler(CustomValidationException.class)
+	public String vaildationException(CustomValidationException e) {
+		// CMRespDto, Script 비교
+		// 1.클라이언트에게 응답할때는 Script 좋음
+		// 2.Ajax통신 - CMRespDto
+		// 3.Android통신 - CMRespDto
+		if(e.getErrorMap() == null) {
+			return Script.back(e.getMessage());
+		}else {
+			return Script.back(e.getErrorMap().toString());
+		}
+
+		//return new CMRespDto<Map<String,String>>(-1,e.getMessage(),e.getErrorMap());
+	}
+	
+	@ExceptionHandler(CustomValidationApiException.class)
+	public ResponseEntity<?> vaildationApiException(CustomValidationApiException e) {
+		return new ResponseEntity<>(new CMRespDto<>(-1,e.getMessage(),e.getErrorMap()),HttpStatus.BAD_REQUEST);
+	}
+	
+	// 그 외의 모든 오류는 이걸 쓰면 될듯
+	@ExceptionHandler(CustomApiException.class)
+	public ResponseEntity<?> apiException(CustomApiException e) {
+		return new ResponseEntity<>(new CMRespDto<>(-1,e.getMessage(),null),HttpStatus.BAD_REQUEST);
+	}
+}
+```
+
+### 48. 프로필 페이지-양방향 매핑 이해하기
