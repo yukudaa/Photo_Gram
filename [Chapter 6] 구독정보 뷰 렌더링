@@ -1,0 +1,415 @@
+# **[Chapter 6] 구독정보 뷰 렌더링**
+
+### 54. 구독정보 뷰 렌더링-구독정보 완성하기
+
+UserProfileDto.java
+
+```java
+package com.cos.photogramstart.web.dto.user;
+
+import com.cos.photogramstart.domain.user.User;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class UserProfileDto {
+
+	private boolean PageOwnerState;
+	private int imageCount;
+	private boolean subscribeState;
+	private int subscribeCount;
+	private User user;
+}
+```
+
+SubscribeRepository.java
+
+```java
+package com.cos.photogramstart.domain.subscribe;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+
+public interface SubscribeRepository extends JpaRepository<Subscribe, Integer>{
+
+	@Modifying // INSERT, DELETE, UPDATE를 네이티브 쿼리로 작성하러면 해당 어노테이션 필요!!
+	@Query(value = "INSERT INTO subscribe(fromUserId, toUserId, createDate) VALUES(:fromUserId,:toUserId,now())",nativeQuery = true)
+	void mSubscribe(int fromUserId, int toUserId); 
+	
+	@Modifying
+	@Query(value = "DELETE FROM subscribe WHERE fromUserId=:fromUserId AND toUserId = :toUserId",nativeQuery = true)
+	void mUnSubscribe(int fromUserId, int toUserId); 
+	
+	@Query(value="SELECT COUNT(*) FROM subscribe WHERE fromUserId = :principallId AND toUserId = :pageUserId",nativeQuery=true)
+	int mSubscribeState(int principallId, int pageUserId);
+	
+	@Query(value="SELECT COUNT(*) FROM subscribe WHERE fromUserId = :pageUserId",nativeQuery=true)
+	int mSubscribeCount(int pageUserId);
+}
+```
+
+UserService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import java.util.function.Supplier;
+
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.cos.photogramstart.domain.subscribe.SubscribeRepository;
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.domain.user.UserRepository;
+import com.cos.photogramstart.handler.ex.CustomException;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.web.dto.user.UserProfileDto;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class UserService {
+	
+	private final UserRepository userRepository;
+	private final SubscribeRepository subscribeRepository;
+	private final BCryptPasswordEncoder bCryptPasswordEncoder;
+	
+	@Transactional(readOnly=true) // select는 readOnly = true
+	public UserProfileDto 회원프로필(int pageUserId, int principalId) {
+		
+		UserProfileDto dto = new UserProfileDto();
+		
+		// SELECT * FROM image WHERE userId = :userId;
+		User userEntity = userRepository.findById(pageUserId).orElseThrow(()->{
+			throw new CustomException("해당 프로필 페이지는 없는 페이지입니다.");
+		});
+		
+		dto.setUser(userEntity);
+		dto.setPageOwnerState(pageUserId == principalId);
+		dto.setImageCount(userEntity.getImages().size());
+		
+		int subscribeState = subscribeRepository.mSubscribeState(principalId, pageUserId);
+		int subscribeCount = subscribeRepository.mSubscribeCount(pageUserId);
+		
+		dto.setSubscribeCount(subscribeCount);
+		dto.setSubscribeState(subscribeState == 1);
+		
+		return dto;
+	}
+	
+	@Transactional
+	public User 회원수정(int id, User user) {
+		// 1. 영속화
+		// 1. 무조건 찾았다. 걱정마 get() // 2. 못찾았어 익섹션 발동시킬게 orElseThrow()
+		User userEntity = userRepository.findById(id).orElseThrow(()->{return new CustomValidationException("찾을 수 없는 ID 입니다.");}); 
+
+		// 2. 영속화된 오브젝트를 수정 - 더티체킹 (업데이트 완료)
+		userEntity.setName(user.getName());
+		
+		String rawPassword = user.getPassword();
+		String encPassword = bCryptPasswordEncoder.encode(rawPassword);
+		
+		userEntity.setPassword(encPassword);
+		userEntity.setBio(user.getBio());
+		userEntity.setWebsite(user.getWebsite());
+		userEntity.setPhone(user.getPhone());
+		userEntity.setGender(user.getGender());
+		return userEntity;
+	} // 더티체킹이 일어나서 업데이트가 완료됨.
+}
+```
+
+profile.jsp
+
+```java
+<c:choose>
+					<c:when test="${dto.isPageOwnerState}">
+						<button class="cta" onclick="location.href='/image/upload'">사진등록</button>
+					</c:when>
+					
+					<c:otherwise>
+						<c:choose>
+							<c:when test = "${dto.subscribeState}}">
+								<button class="cta blue" onclick="toggleSubscribe(this)">구독취소</button>
+							</c:when>
+							<c:otherwise>
+								<button class="cta" onclick="toggleSubscribe(this)">구독하기</button>
+							</c:otherwise>
+						</c:choose>
+						
+						
+					</c:otherwise>
+				</c:choose>
+```
+
+### 55. 구독정보 뷰 렌더링-구독 및 구독취소 구현하기
+
+profile.jsp
+
+```java
+<c:choose>
+					<c:when test="${dto.isPageOwnerState}">
+						<button class="cta" onclick="location.href='/image/upload'">사진등록</button>
+					</c:when>
+					
+					<c:otherwise>
+						<c:choose>
+							<c:when test = "${dto.subscribeState}}">
+								<button class="cta blue" onclick="toggleSubscribe(${dto.user.id},this)">구독취소</button>
+							</c:when>
+							<c:otherwise>
+								<button class="cta" onclick="toggleSubscribe(${dto.user.id},this)">구독하기</button>
+							</c:otherwise>
+						</c:choose>
+						
+						
+					</c:otherwise>
+				</c:choose>
+```
+
+profile.js
+
+```java
+function toggleSubscribe(toUserId, obj) {
+	if ($(obj).text() === "구독취소") {
+		
+		$.axjx({
+			type:"delete",
+			url:"/api/subscribe/" + toUserId,
+			dataType:"json"
+		}).done(res=>{
+			$(obj).text("구독하기");
+			$(obj).toggleClass("blue");
+		}).fail(error=>{
+			console.log("구독취소실패",error);
+		});
+		
+
+	} else {
+		$.axjx({
+			type:"post",
+			url:"/api/subscribe/" + toUserId,
+			dataType:"json"
+		}).done(res=>{
+			$(obj).text("구독취소");
+			$(obj).toggleClass("blue");
+		}).fail(error=>{
+			console.log("구독하기실패",error);
+		});
+	}
+}
+```
+
+header.jsp
+
+```java
+<li class="navi-item"><a href="/user/${principal.user.id }">
+```
+
+### 56. 구독정보 뷰 렌더링-구독 모달 정보를 위한 API 만들기
+
+com.cos.photogramstart.web.dto.subscribe.SubscribeDto.java
+
+```java
+package com.cos.photogramstart.web.dto.subscribe;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+public class SubscribeDto {
+	private int userId;
+	private String username;
+	private String profileImageUrl;
+	private Integer subscribeState;
+	private Integer equalUserState;
+}
+```
+
+UserApiController.java
+
+```java
+private final SubscribeService subscribeService;
+	
+	@GetMapping("/api/user/{pageUserId}/subscribe")
+	public ResponseEntity<?> subscribeList(@PathVariable int pageUserId, @AuthenticationPrincipal PrincipalDatails principalDatails){
+		
+		List<SubscribeDto> subscribeDto = subscribeService.구독리스트(principalDatails.getUser().getId(),pageUserId);
+		
+		return new ResponseEntity<>(new CMRespDto<>(1,"구독자 정보 리스트 가져오기 성공",subscribeDto),HttpStatus.OK);
+	}
+```
+
+SubscribeService.java
+
+```java
+private final SubscribeRepository subscribeRepository;
+
+	@Transactional(readOnly=true)
+	public List<SubscribeDto> 구독리스트(int principalId, int pageUserId){
+		
+		
+		
+		return null;
+	}
+```
+
+### 57. 구독정보 뷰 렌더링-조인과 스칼라 서브쿼리
+
+1. 로그인(1 ssar) — 구독정보(2 cos)
+
+— 1번화 3번의 정보(toUserId)가 구독 모달에 출력
+
+SELECT * FROM subscibe
+
+SELECT * FROM user;
+
+SELECT * FROM subscribe WHERE fromUserId = 2;
+
+SELECT * FROM user WHERE id = 1 OR id = 3;
+
+— 조인 (user.id = subscribe.toUserId)
+
+SELECT u.id, u.username, u.profileImageUrl FROM user u INNER JOIN subscribe s ON [u.id](http://u.id) = s.toUserId WHERE s.fromUserId = 2;
+
+— 로그인(1), 화면(1,3)
+
+SELECT true FROM subscribe WHERE fromUserId = 1 AND toUserId = 1;
+
+SELECT true FROM subscribe WHERE fromUserId = 1 AND toUserId = 3;
+
+— 가상 컬럼 추가
+
+SELECT u.id, u.username, u.profileImageUrl, 1 subscribeState
+
+FROM user u INNER JOIN subscribe s
+
+ON [u.id](http://u.id) = s.toUserId 
+
+WHERE s.fromUserId = 2;
+
+— 스칼라 서브쿼리(단일행을 리턴)
+
+SELECT u.id, u.username, u.profileImageUrl, 
+
+(SELECT COUNT(*)) subscribeState
+
+FROM user u INNER JOIN subscribe s
+
+ON [u.id](http://u.id) = s.toUserId 
+
+WHERE s.fromUserId = 2;
+
+— 구독 여부 완성 쿼리
+
+SELECT u.id, u.username, u.profileImageUrl, 
+
+(SELECT true FROM subscribe WHERE fromUserId = 1 AND toUserId = u.id) subscribeState
+
+FROM user u INNER JOIN subscribe s
+
+ON [u.id](http://u.id) = s.toUserId 
+
+WHERE s.fromUserId = 2;
+
+— 동일 유저인지 판단 쿼리
+
+SELECT u.id, u.username, u.profileImageUrl, 
+
+if ((SELECT 1 FROM subscribe WHERE fromUserId = 1 AND toUserId = u.id),1,0) subscribeState,
+
+if((1=u.id),1,0) equalUserState
+
+FROM user u INNER JOIN subscribe s
+
+ON [u.id](http://u.id) = s.toUserId 
+
+WHERE s.fromUserId = 2;
+
+### 58. 구독정보 뷰 렌더링-QLRM 라이브러리로 DTO 매핑하기
+
+SubscribeRepository에서 못짬 (return이 다름)
+
+service에서 직접 native 쿼리를 짤꺼임
+
+SubscribeService.java
+package com.cos.photogramstart.service;
+
+import java.util.List;
+
+import javax.persistence.EntityManager;
+import javax.persistence.Query;
+
+import org.qlrm.mapper.JpaResultMapper;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.cos.photogramstart.domain.subscribe.SubscribeRepository;
+import com.cos.photogramstart.handler.ex.CustomApiException;
+import com.cos.photogramstart.web.dto.subscribe.SubscribeDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Service
+public class SubscribeService {
+
+	private final SubscribeRepository subscribeRepository;
+	private final EntityManager em; // Repository는 EntityManager를 구현해서 만들어져 있는 구현체
+
+	@Transactional(readOnly=true)
+	public List<SubscribeDto> 구독리스트(int principalId, int pageUserId){
+		
+		// 쿼리 준비
+		StringBuffer sb = new StringBuffer();
+		sb.append("SELECT u.id, u.username, u.profileImageUrl, ");
+		sb.append("if ((SELECT 1 FROM subscribe WHERE fromUserId = ? AND toUserId = u.id),1,0) subscribeState, ");
+		sb.append("if((?=u.id),1,0) equalUserState ");
+		sb.append("FROM user u INNER JOIN subscribe s ");
+		sb.append("ON u.id = s.toUserId ");
+		sb.append("WHERE s.fromUserId = ?"); // 세미콜론 첨부하면 안됨
+		
+		// 1. 물음표 principalId
+		// 2. 물음표 principalId
+		// 3. 마지막 물음표 pageUserId
+		
+		// 쿼리 완성
+		Query query = em.createNativeQuery(sb.toString())
+				.setParameter(1, principalId)
+				.setParameter(2, principalId)
+				.setParameter(3, pageUserId);
+		
+		// 쿼리 실행 (qlrm 라이브러리 필요 = DTO에 DB결과를 매핑하기 위해)
+		JpaResultMapper result = new JpaResultMapper();
+		List<SubscribeDto> subscribeDtos = result.list(query, SubscribeDto.class);
+		return subscribeDtos;
+	}
+	
+	@Transactional
+	public void 구독하기(int fromUserId, int toUserId) {
+		try {
+			subscribeRepository.mSubscribe(fromUserId, toUserId);
+		} catch (Exception e) {
+			throw new CustomApiException("이미 구독을 하였습니다.");
+		}
+	}
+
+	@Transactional
+	public void 구독취소하기(int fromUserId, int toUserId) {
+		subscribeRepository.mUnSubscribe(fromUserId, toUserId);
+	}
+}
