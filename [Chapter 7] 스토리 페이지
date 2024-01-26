@@ -1,0 +1,292 @@
+### 61. 스토리 페이지-포토리스트 API 만들기
+
+1. 포토 리스트 API 만들기
+2. Ajax로 포토 리스트 가져오기
+3. 페이징 처리하기
+
+user, image 정보 가져와서 뿌려보기
+
+— 2번으로 로그인 : userId = 1,3 보여줘야함
+
+SELECT * FROM image WHERE userId IN (1,3);
+SELECT toUserId FROM subscribe WHERE fromUserId = 2;
+
+→ SELECT * FROM image WHERE userId IN (SELECT toUserId FROM subscribe WHERE fromUserId = 2);
+
+Image.java
+
+```java
+@JsonIgnoreProperties({"images"})
+	@JoinColumn(name = "userId")
+	@ManyToOne
+	private User user; // 1
+```
+
+ImageRepository.java
+
+```java
+package com.cos.photogramstart.domain.image;
+
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
+public interface ImageRepository extends JpaRepository<Image,Integer> {
+
+	@Query(value="SELECT * FROM image WHERE userId IN (SELECT toUserId FROM subscribe WHERE fromUserId = :principalId) ",nativeQuery = true)
+	List<Image> mStory(int principalId);
+}
+```
+
+ImageApiController.java
+
+```java
+package com.cos.photogramstart.web.api;
+
+import java.util.List;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.image.Image;
+import com.cos.photogramstart.service.ImageService;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@RestController
+public class ImageApiController {
+
+	private final ImageService imageService;
+	
+	@GetMapping("/api/image")
+	public ResponseEntity<?> imageStory(@AuthenticationPrincipal PrincipalDatails principalDatails){
+		List<Image> images = imageService.이미지스토리(principalDatails.getUser().getId());
+		return new ResponseEntity<>(new CMRespDto<>(1, "성공",images),HttpStatus.OK); // JS에서 호출해야함
+	}
+}
+```
+
+ImageService.java
+
+```java
+private final ImageRepository imageRepository;
+	
+	@Transactional(readOnly = true) // 영속성 컨텍스트 변경 감지를 해서, 더티체킹, flush(반영) X
+	public List<Image> 이미지스토리(int principalId) {
+		List<Image> images = imageRepository.mStory(principalId);
+		return images;
+	}
+```
+
+### 62. 스토리 페이지-포토리스트 뷰 렌더링하기
+
+ImageApiController.java
+
+```java
+package com.cos.photogramstart.web.api;
+
+import java.util.List;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.image.Image;
+import com.cos.photogramstart.service.ImageService;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@RestController
+public class ImageApiController {
+
+	private final ImageService imageService;
+	
+	@GetMapping("/api/image")
+	public ResponseEntity<?> imageStory(@AuthenticationPrincipal PrincipalDatails principalDatails){
+		List<Image> images = imageService.이미지스토리(principalDatails.getUser().getId());
+		return new ResponseEntity<>(new CMRespDto<>(1, "성공",images),HttpStatus.OK); // JS에서 호출해야함
+	}
+}
+```
+
+story.js
+
+```java
+// (1) 스토리 로드하기
+function storyLoad() {
+	$.ajax().done(res=>{
+		url:'/api/image',
+		dataType:"json"
+	}).done(res=>{
+		console.log(res);
+		res.data.forEach((image)=>{
+			let storyItem = getStoryItem(image);
+			$("#storyList").append(storyItem);
+		});
+	}).fail(error=>{
+		console.log("오류",error);
+	});
+}
+
+storyLoad();
+
+function getStoryItem(image) {
+	let item = `<div class="story-list__item">
+	<div class="sl__item__header">
+		<div>
+			<img class="profile-image" src="/upload/${image.user.profileImageUrl}"
+				onerror="this.src='/images/person.jpeg'" />
+		</div>
+		<div>${image.user.username}</div>
+	</div>
+
+	<div class="sl__item__img">
+		<img src="/upload/${image.postImageUrl}" />
+	</div>
+
+	<div class="sl__item__contents">
+		<div class="sl__item__contents__icon">
+
+			<button>
+				<i class="fas fa-heart active" id="storyLikeIcon-1" onclick="toggleLike()"></i>
+			</button>
+		</div>
+
+		<span class="like"><b id="storyLikeCount-1">3 </b>likes</span>
+
+		<div class="sl__item__contents__content">
+			<p>${image.caption}</p>
+		</div>
+
+		<div id="storyCommentList-1">
+
+			<div class="sl__item__contents__comment" id="storyCommentItem-1"">
+				<p>
+					<b>Lovely :</b> 부럽습니다.
+				</p>
+
+				<button>
+					<i class="fas fa-times"></i>
+				</button>
+
+			</div>
+
+		</div>
+
+		<div class="sl__item__input">
+			<input type="text" placeholder="댓글 달기..." id="storyCommentInput-1" />
+			<button type="button" onClick="addComment()">게시</button>
+		</div>
+
+	</div>
+</div>`;
+return item;
+}
+```
+
+### 63. 스토리 페이지-페이징하기
+
+ImageApiController.java
+
+```java
+package com.cos.photogramstart.web.api;
+
+import java.util.List;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.image.Image;
+import com.cos.photogramstart.service.ImageService;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@RestController
+public class ImageApiController {
+
+	private final ImageService imageService;
+	
+	@GetMapping("/api/image")
+	public ResponseEntity<?> imageStory(@AuthenticationPrincipal PrincipalDatails principalDatails,
+			@PageableDefault(size=3) Pageable pageable){
+		Page<Image> images = imageService.이미지스토리(principalDatails.getUser().getId(), pageable);
+		return new ResponseEntity<>(new CMRespDto<>(1, "성공",images),HttpStatus.OK); // JS에서 호출해야함
+	}
+}
+```
+
+ImageService.java
+
+```java
+@Transactional(readOnly = true) // 영속성 컨텍스트 변경 감지를 해서, 더티체킹, flush(반영) X
+	public Page<Image> 이미지스토리(int principalId,Pageable pageable) {
+		Page<Image> images = imageRepository.mStory(principalId, pageable);
+		return images;
+	}
+```
+
+ImageRepository.java
+
+```java
+package com.cos.photogramstart.domain.image;
+
+import java.util.List;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
+public interface ImageRepository extends JpaRepository<Image,Integer> {
+
+	@Query(value="SELECT * FROM image WHERE userId IN (SELECT toUserId FROM subscribe WHERE fromUserId = :principalId) ORDER BY id DESC ",nativeQuery = true)
+	Page<Image> mStory(int principalId, Pageable pageable);
+}
+```
+
+### 64. 스토리 페이지-스크롤 페이징 로딩 구현하기
+
+story.js
+
+```java
+let page = 0;
+
+url:'/api/image?page=${page}',
+
+// (2) 스토리 스크롤 페이징하기
+$(window).scroll(() => {
+	console.log("윈도우 scrollTop",$(window).scrollTop()); // 문서의 높이 - 윈도우의 높이
+	console.log("문서의 높이",$(document).height());
+	console.log("윈도우의 높이",$(window).height());
+	
+	let checkNum = $(window).scrollTop() - ($(document).height() - $(window).height());
+	console.log(checkNum);
+	
+	if(checkNum < 1 && checkNum > -1) {
+		page++;
+		storyLoad();
+	}
+});
+```
