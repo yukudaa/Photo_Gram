@@ -1,5 +1,3 @@
-# **[Chapter 6] 구독정보 뷰 렌더링**
-
 ### 54. 구독정보 뷰 렌더링-구독정보 완성하기
 
 UserProfileDto.java
@@ -347,6 +345,8 @@ SubscribeRepository에서 못짬 (return이 다름)
 service에서 직접 native 쿼리를 짤꺼임
 
 SubscribeService.java
+
+```java
 package com.cos.photogramstart.service;
 
 import java.util.List;
@@ -413,3 +413,66 @@ public class SubscribeService {
 		subscribeRepository.mUnSubscribe(fromUserId, toUserId);
 	}
 }
+```
+
+### 59. 구독정보 뷰 렌더링-구독모달 정보 렌더링 완료
+
+profile.js
+
+```java
+function getSubscribeModalItem(u) {
+
+	let item = `<div class="subscribe__item" id="subscribeModalItem-${u.userId}">
+	<div class="subscribe__img">
+		<img src="/upload/${u.profileImageUrl}" alt="" onerror="this.src='/images/person.jpeg'"/>
+	</div>
+	<div class="subscribe__text">
+		<h2>${u.username}</h2>
+	</div>
+	<div class="subscribe__btn">`;
+
+	if (!u.equalState) {
+		if (u.subscribeState) {
+			item += `<button class="cta blue" onclick="toggleSubscribe(this)">구독취소</button>`;
+		} else {
+			item += `<button class="cta" onclick="toggleSubscribe(this)">구독하기</button>`;
+		}
+	}
+		item += `
+	</div>
+</div>`;
+
+		return item;
+	}
+```
+
+### 60. 구독정보 뷰 렌더링-구독 모달 정보에서 구독 및 구독취소 구현하기
+
+profile.js
+
+```java
+function getSubscribeModalItem(u) {
+
+	let item = `<div class="subscribe__item" id="subscribeModalItem-${u.userId}">
+	<div class="subscribe__img">
+		<img src="/upload/${u.profileImageUrl}" alt="" onerror="this.src='/images/person.jpeg'"/>
+	</div>
+	<div class="subscribe__text">
+		<h2>${u.username}</h2>
+	</div>
+	<div class="subscribe__btn">`;
+
+	if (!u.equalState) {
+		if (u.subscribeState) {
+			item += `<button class="cta blue" onclick="toggleSubscribe(${u.userId}, this)">구독취소</button>`;
+		} else {
+			item += `<button class="cta" onclick="toggleSubscribe(${u.userId}, this)">구독하기</button>`;
+		}
+	}
+		item += `
+	</div>
+</div>`;
+
+		return item;
+	}
+```
