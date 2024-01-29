@@ -1,5 +1,342 @@
 ### 65. 좋아요 구현-Likes 모델 만들기
 
 1. 좋아요 모델 만들기
-2. 좋아요 API 만들기
-3. 좋아요 구현하기
+
+story.js
+
+```java
+<button>
+	 <i class="fas fa-heart active" id="storyLikeIcon-${image.id}" onclick="toggleLike(${image.id})"></i>
+</button>
+
+let likeIcon = $(`#storyLikeIcon-${imageId}`);
+```
+
+com.cos.photogramstart.domain.likes.Likes.java
+
+```java
+package com.cos.photogramstart.domain.likes;
+
+import java.time.LocalDateTime;
+
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+import javax.persistence.PrePersist;
+import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
+
+import com.cos.photogramstart.domain.image.Image;
+import com.cos.photogramstart.domain.subscribe.Subscribe;
+import com.cos.photogramstart.domain.user.User;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Builder
+@Entity // DB에 테이블을 생성
+@Data
+@NoArgsConstructor // 빈 생성자
+@AllArgsConstructor // 전체 생성자
+@Table(
+	uniqueConstraints = {
+			@UniqueConstraint(
+					name="likes_uk",
+					columnNames = {"imageId","userId"}
+					
+					)
+	}
+) // 유니크
+public class Likes { // N
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY) // 번호 증가 전략이 데이터베이스를 따라간다.
+	private int id;
+	
+	@JoinColumn(name="imageId")
+	@ManyToOne
+	private Image image; // 1
+	
+	// 오류가 터지고 나서 잡아봅시다.
+	@JoinColumn(name="userId")
+	@ManyToOne
+	private User user; // 1
+	
+	private LocalDateTime createDate;
+	
+	@PrePersist // DB에 Insert가 되기 직전에 실행
+	public void createDate() {
+		this.createDate = LocalDateTime.now();
+	}
+}
+```
+
+### 66. 좋아요 구현-좋아요 및 좋아요취소 API 구현하기
+
+1. 좋아요 API 만들기
+
+LikesRepository.java
+
+```java
+package com.cos.photogramstart.domain.likes;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+
+public interface LikesRepository extends JpaRepository<Likes, Integer>{
+
+	@Modifying
+	@Query(value="INSERT INTO likes(imageId, userId, createDate) VALUES(:imageId, :principalId, now()", nativeQuery = true)
+	int mLikes(int imageId, int principalId);
+	
+	@Modifying
+	@Query(value="DELETE FROM likes WHERE imageId = :imageId AND userId = :principalId", nativeQuery = true)
+	int mUnLikes(int imageId, int principalId);
+	
+}
+```
+
+LikesService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.cos.photogramstart.domain.likes.LikesRepository;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class LikesService {
+	
+	private final LikesRepository likesRepository;
+	
+	@Transactional
+	public void 좋아요(int imageId, int principalId) {
+		likesRepository.mLikes(imageId, principalId);
+	}
+	
+	@Transactional
+	public void 좋아요취소(int imageId, int principalId) {
+		likesRepository.mUnLikes(imageId, principalId);
+	}
+}
+```
+
+ImageApiController.java
+
+```java
+package com.cos.photogramstart.web.api;
+
+import java.util.List;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.image.Image;
+import com.cos.photogramstart.service.ImageService;
+import com.cos.photogramstart.service.LikesService;
+import com.cos.photogramstart.web.dto.CMRespDto;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@RestController
+public class ImageApiController {
+
+	private final ImageService imageService;
+	private final LikesService likesService;
+	
+	@GetMapping("/api/image")
+	public ResponseEntity<?> imageStory(@AuthenticationPrincipal PrincipalDatails principalDatails,
+			@PageableDefault(size=3) Pageable pageable){
+		Page<Image> images = imageService.이미지스토리(principalDatails.getUser().getId(), pageable);
+		return new ResponseEntity<>(new CMRespDto<>(1, "성공",images),HttpStatus.OK); // JS에서 호출해야함
+	}
+	
+	@PostMapping("/api/image/{imageId}/likes")
+	public ResponseEntity<?> likes(@PathVariable int imageId, @AuthenticationPrincipal PrincipalDatails principalDatails){
+		likesService.좋아요(imageId,principalDatails.getUser().getId());
+		return new ResponseEntity<>(new CMRespDto<>(1,"좋아요성공",null),HttpStatus.CREATED);
+	}
+	
+	@DeleteMapping("/api/image/{imageId}/likes")
+	public ResponseEntity<?> unlikes(@PathVariable int imageId, @AuthenticationPrincipal PrincipalDatails principalDatails){
+		likesService.좋아요취소(imageId,principalDatails.getUser().getId());
+		return new ResponseEntity<>(new CMRespDto<>(1,"좋아요취소성공",null),HttpStatus.OK);
+	}
+	
+}
+```
+
+### 67. 좋아요 구현-좋아요 뷰 렌더링
+
+1. 좋아요 구현하기
+
+ImageService.java
+
+```java
+private final ImageRepository imageRepository;
+	
+	@Transactional(readOnly = true) // 영속성 컨텍스트 변경 감지를 해서, 더티체킹, flush(반영) X
+	public Page<Image> 이미지스토리(int principalId,Pageable pageable) {
+		Page<Image> images = imageRepository.mStory(principalId, pageable);
+		
+		// 2(cos) 로그인 
+		// images에 좋아요 상태 담기
+		images.forEach((image)->{
+			image.getLikes().forEach((like)->{
+				if(like.getUser().getId() == principalId) { // 해당 이미지에 좋아요한 사람들을 찾아서 현재 로그인한 사람이 좋아요 한것인지 비교
+					image.setLikeState(true);
+				}
+			});
+		});
+		
+		
+		return images;
+	}
+```
+
+story.js
+
+```java
+<div class="sl__item__contents">
+		<div class="sl__item__contents__icon">
+
+			<button>`;
+				if(image.likeState) {
+					item += `<i class="fas fa-heart active" id="storyLikeIcon-${image.id}" onclick="toggleLike(${image.id})"></i>`;
+				}else{
+					item += `<i class="fas fa-heart" id="storyLikeIcon-${image.id}" onclick="toggleLike(${image.id})"></i>`;
+				}
+				
+			
+			item += `
+			</button>
+		</div>
+```
+
+### 68. 좋아요 구현-좋아요 카운트 뷰 렌더링
+
+Image.java
+
+```java
+@Transient
+	private int likeCount;
+```
+
+story.js
+
+```java
+<span class="like"><b id="storyLikeCount-${image.id}">${image.likeCount}</b>likes</span>
+```
+
+### 69. 좋아요 구현-좋아요 구현 완료
+
+ImageService.java
+
+```java
+private final ImageRepository imageRepository;
+	
+	@Transactional(readOnly = true) // 영속성 컨텍스트 변경 감지를 해서, 더티체킹, flush(반영) X
+	public Page<Image> 이미지스토리(int principalId,Pageable pageable) {
+		Page<Image> images = imageRepository.mStory(principalId, pageable);
+		
+		// 2(cos) 로그인 
+		// images에 좋아요 상태 담기
+		images.forEach((image)->{
+			
+			image.setLikeCount(image.getLikes().size());
+			
+			image.getLikes().forEach((like)->{
+				if(like.getUser().getId() == principalId) { // 해당 이미지에 좋아요한 사람들을 찾아서 현재 로그인한 사람이 좋아요 한것인지 비교
+					image.setLikeState(true);
+				}
+			});
+		});
+		
+		
+		return images;
+	}
+```
+
+story.js
+
+```java
+// (3) 좋아요, 안좋아요
+function toggleLike(imageId) {
+	let likeIcon = $(`#storyLikeIcon-${imageId}`);
+	
+	if (likeIcon.hasClass("far")) { // 좋아요 하겠다
+		
+		$.ajax({
+			type:"post",
+			url:`/api/image/${imageId}/likes`,
+			dataType:"json"
+		}).done(res=>{
+			
+			let likeCountStr = $(`#storyLikeCount-${imageId}`).text();
+			let likeCount = Number(likeCountStr)+1;
+			$(`#storyLikeCount-${imageId}`).text(likeCount);
+			
+			likeIcon.addClass("fas");
+			likeIcon.addClass("active");
+			likeIcon.removeClass("far");
+		}).fail(error=>{
+			console.log("오류",error);
+		});
+		
+
+	} else { 						// 좋아요 취소 하겠다.
+	
+		$.ajax({
+			type:"delete",
+			url:`/api/image/${imageId}/likes`,
+			dataType:"json"
+		}).done(res=>{
+			
+			let likeCountStr = $(`#storyLikeCount-${imageId}`).text();
+			let likeCount = Number(likeCountStr)-1;
+			$(`#storyLikeCount-${imageId}`).text(likeCount);
+			
+			likeIcon.removeClass("fas");
+			likeIcon.removeClass("active");
+			likeIcon.addClass("far");
+		}).fail(error=>{
+			console.log("오류",error);
+		});
+	}
+}
+```
+
+### 70. 좋아요 구현-무한참조 버그 잡기
+
+Likes.java
+
+```java
+// 오류가 터지고 나서 잡아봅시다.
+	@JsonIgnoreProperties({"images"})
+	@JoinColumn(name="userId")
+	@ManyToOne
+	private User user; // 1
+```
