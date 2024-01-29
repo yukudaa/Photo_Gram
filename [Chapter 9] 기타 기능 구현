@@ -1,0 +1,258 @@
+### 71. 기타-인기 페이지 구현 완료
+
+인기 페이지 구현
+
+- 좋아요가 있는 사진들을 순서대로 출력 (좋아요가 많은 순으로)
+
+SELECT i.* FROM image i INNER JOIN ( SELECT imageId, COUNT(imageId) likeCount FROM likes GROUP BY imageId) c ON [i.id](http://i.id) = c.imageId ORDER BY likeCount DESC;
+
+ImageController.java
+
+```java
+package com.cos.photogramstart.web;
+
+import java.util.List;
+
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.image.Image;
+import com.cos.photogramstart.handler.ex.CustomValidationException;
+import com.cos.photogramstart.service.ImageService;
+import com.cos.photogramstart.web.dto.image.ImageUploadDto;
+
+import lombok.RequiredArgsConstructor;
+
+@Controller
+@RequiredArgsConstructor
+public class ImageController { 
+	
+	private final ImageService imageService;
+
+	@GetMapping({"/","/image/story"})
+	public String story() {
+		return "image/story";
+	}
+	
+	// API 구현한다면 - 이유 - (브라우저에서 요청하는게 아니라, 안드로이드, IOS요청)
+	@GetMapping({"/image/popular"})
+	public String popular(Model model) {
+		
+		// api는 데이터를 리턴하는 서버
+		// ajax를 안하니깐(ajax가 필요하면 apiController만들면됨)
+		List<Image> images = imageService.인기사진();
+		model.addAttribute("images",images);
+		
+		return "image/popular";
+	}
+	
+	@GetMapping({"/image/upload"})
+	public String upload() {
+		return "image/upload";
+	}
+	
+	// 사용자에게 데이터를 받고 service에게 호출 해주면 된다.
+	@PostMapping("/image")
+	public String imageUpload(ImageUploadDto imageUploadDto, @AuthenticationPrincipal PrincipalDatails principalDatails) {
+		
+		if(imageUploadDto.getFile().isEmpty()) {
+			throw new CustomValidationException("이미지가 첨부되지 않았습니다.",null);
+		}
+		
+		// 서비스 호출
+		imageService.사진업로드(imageUploadDto, principalDatails);
+		
+		return "redirect:/user/"+principalDatails.getUser().getId(); // 업로드를 딱 누르면 /user/{?}로 오게
+	}
+}
+```
+
+ImageService.java
+
+```java
+package com.cos.photogramstart.service;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.image.Image;
+import com.cos.photogramstart.domain.image.ImageRepository;
+import com.cos.photogramstart.web.dto.image.ImageUploadDto;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class ImageService {
+
+	private final ImageRepository imageRepository;
+	
+	@Transactional(readOnly = true)
+	public List<Image> 인기사진() {
+		return imageRepository.mPopular();
+	}
+	
+	
+	@Transactional(readOnly = true) // 영속성 컨텍스트 변경 감지를 해서, 더티체킹, flush(반영) X
+	public Page<Image> 이미지스토리(int principalId,Pageable pageable) {
+		Page<Image> images = imageRepository.mStory(principalId, pageable);
+		
+		// 2(cos) 로그인 
+		// images에 좋아요 상태 담기
+		images.forEach((image)->{
+			
+			image.setLikeCount(image.getLikes().size());
+			
+			image.getLikes().forEach((like)->{
+				if(like.getUser().getId() == principalId) { // 해당 이미지에 좋아요한 사람들을 찾아서 현재 로그인한 사람이 좋아요 한것인지 비교
+					image.setLikeState(true);
+				}
+			});
+		});
+		
+		
+		return images;
+	}
+	
+	
+	@Value("${file.path}")
+	private String uploadFolder; // application.yml의 값 가져오기
+	
+	@Transactional // 트랜잭션: 일의 최소 단위
+	public void 사진업로드(ImageUploadDto imageUploadDto, PrincipalDatails principalDatails) {
+		UUID uuid = UUID.randomUUID(); // uuid
+		String imageFileName = uuid+"_"+imageUploadDto.getFile().getOriginalFilename(); // 실제 file 이름이 들어감 1.jpg
+		System.out.println("이미지 파일이름: "+imageFileName);
+		
+		Path imageFilePath = Paths.get(uploadFolder+imageFileName); // 경로 + file명
+		
+		// 통신, I/O -> 예외가 발생할 수 있다.
+		try {
+			Files.write(imageFilePath, imageUploadDto.getFile().getBytes());
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+		// image 테이블에 저장
+		Image image = imageUploadDto.toEntity(imageFileName, principalDatails.getUser()); // 5cf6237d-c404-43e5-836b-e55413ed0e49_bag.jpeg
+		imageRepository.save(image);
+		
+		// System.out.println(imageEntity); // Image와 User 호출 무한반복
+	}
+}
+```
+
+ImageRepository.java
+
+```java
+@Query(value="SELECT i.* FROM image i INNER JOIN ( SELECT imageId, COUNT(imageId) likeCount FROM likes GROUP BY imageId) c ON i.id = c.imageId ORDER BY likeCount DESC ",nativeQuery = true)
+	List<Image> mPopular();
+```
+
+popular.jsp
+
+```java
+<!--인기 게시글-->
+<main class="popular">
+	<div class="exploreContainer">
+
+		<!--인기게시글 갤러리(GRID배치)-->
+		<div class="popular-gallery">
+
+			<c:forEach var="image" items="${images }">
+				<div class="p-img-box">
+					<a href="/user/${image.user.id}"> <img src="/upload/${image.postImageUrl }" />
+					</a>
+				</div>
+			</c:forEach>
+
+		</div>
+
+	</div>
+</main>
+```
+
+### 72. 기타-프로필 페이지 좋아요 카운트 구현
+
+유저 프로필 페이지 좋아요 카운트 구현
+
+- 보류
+
+Userservice.java
+
+```java
+// 좋아요 카운트 추가하기
+		userEntity.getImages().forEach((image)->{
+			image.setLikeCount(image.getLikes().size());
+		});
+```
+
+profile.jsp
+
+```java
+<a href="#" class=""> <i class="fas fa-heart"></i><span>${image.likeCount}</span>
+```
+
+### 73. 기타-프로필 페이지 유저 사진 변경
+
+프로필 사진 등록
+
+1. pageUserId, principal 를 비교해서 같을 때만 동작하기
+2. 사진을 클릭하면 input type=”file” 강제로 클릭 이벤트 발생시키기
+3. 이미지를 put방식(ajax)으로 서버로 전송하기
+- FormData 객체 이용
+
+profile.js
+
+```java
+// 서버에 이미지를 전송
+		let profileImageForm = $("#userProfileImageForm")[0];
+		console.log(profileImageForm);
+
+		// FormData 객체를 이용하면 form 태그의 필드와 그 값을 나타내는 일련의 key/value 쌍을 담을 수 있다.
+		let formData = new FormData(profileImageForm);
+
+		$.ajax({
+			type: "put",
+			url: `/api/user/${principalId}/profileImageUrl`,
+			data: formData,
+			contentType: false, // 필수 : x-www-form-urlencoede로 파싱되는 것을 방지
+			processData: false, // 필수 : contentType을 false로 줬을 때 QueryString 자동 설정됨. 해제
+			enctype: "multipart/form-data",
+			dataType: "json"
+		}).done(res => {
+			// 사진 전송 성공시 이미지 변경
+			let reader = new FileReader();
+			reader.onload = (e) => {
+				$("#userProfileImage").attr("src", e.target.result);
+			}
+			reader.readAsDataURL(f); // 이 코드 실행시 reader.onload 실행됨.
+		}).fail(error => {
+			console.log("오류",error);
+		});
+```
+
+UserApiController.java
+
+```java
+@PutMapping("/api/user/{principalId}/profileImageUrl")
+	public ResponseEntity<?> profileImageUrlUpdate(@PathVariable int principalId, MultipartFile profileImageFile, @AuthenticationPrincipal PrincipalDatails principalDatails) {
+		User userEntity = userService.회원프로필사진변경(principalId, profileImageFile);
+		principalDatails.setUser(userEntity); // 세션 변경
+		return new ResponseEntity<>(new CMRespDto<>(1, "프로필사진변경 성공",null), HttpStatus.OK);
+	}
+```
