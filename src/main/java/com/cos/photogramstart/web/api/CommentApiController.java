@@ -33,18 +33,7 @@ public class CommentApiController {
 	
 	@PostMapping("/api/comment")
 	public ResponseEntity<?> commentSave(@Valid @RequestBody CommentDto commentDto, BindingResult bindingResult,
-			@AuthenticationPrincipal PrincipalDatails principalDatails ) {  // x-www-~ 뭐시기 안받고 JSON 받으려면 @RequestBody 붙여야함
-		
-		if(bindingResult.hasErrors()) {
-			Map<String, String> errorMap = new HashMap<>();
-			
-			for(FieldError error : bindingResult.getFieldErrors()) {
-				errorMap.put(error.getField(),error.getDefaultMessage());
-				// System.out.println(error.getDefaultMessage());
-			}
-			throw new CustomValidationApiException("유효성 검사 실패함", errorMap);
-		}
-		
+			@AuthenticationPrincipal PrincipalDatails principalDatails ) {  // x-www-~ 뭐시기 안받고 JSON 받으려면 @RequestBody 붙여야함	
 		Comment comment = commentService.댓글쓰기(commentDto.getContent(),commentDto.getImageId(),principalDatails.getUser().getId()); // content, imageId, userId
 		return new ResponseEntity<>(new CMRespDto<>(1,"댓글쓰기성공",comment),HttpStatus.CREATED);
 	}
