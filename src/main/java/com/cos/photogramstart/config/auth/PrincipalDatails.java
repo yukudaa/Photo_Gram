@@ -2,22 +2,29 @@ package com.cos.photogramstart.config.auth;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Map;
 
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 
 import com.cos.photogramstart.domain.user.User;
 
 import lombok.Data;
 
 @Data
-public class PrincipalDatails implements UserDetails{
+public class PrincipalDatails implements UserDetails, OAuth2User{
 
 	private static final long serialVersionUID = 1L;
 	
 	private User user;
+	private Map<String, Object> attributes;
 	
 	public PrincipalDatails(User user) {
+		this.user = user;
+	}
+	
+	public PrincipalDatails(User user, Map<String,Object> attributes) {
 		this.user = user;
 	}
 	
@@ -66,6 +73,18 @@ public class PrincipalDatails implements UserDetails{
 	public boolean isEnabled() {
 		// TODO Auto-generated method stub
 		return true;
+	}
+
+	@Override
+	public Map<String, Object> getAttributes() {
+		// TODO Auto-generated method stub
+		return attributes; // {id:343434343 name:이유구, email:leeyookoo@nate.com
+	}
+
+	@Override
+	public String getName() {
+		// TODO Auto-generated method stub
+		return (String) attributes.get("name");
 	}
 
 }
