@@ -1,0 +1,192 @@
+### 83. OAuth2 페이스북 로그인-앱 등록 및 앱 설정
+
+1) 앱등록
+
+2) 프로젝트-정보저장
+
+pom.xml
+
+```java
+<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-oauth2-client</artifactId>
+		</dependency>
+```
+
+application.yml
+
+```java
+oauth2:
+      client:
+        registration:
+          facebook:
+            client-id: 315293796826930
+            client-secret: 487af9479023b8c0e58f913b411327cf
+            scope:
+            - public_profile
+            - email
+```
+
+### 84. OAuth2페이스북 로그인-회원정보 받기
+
+SecurityConfig.java
+
+```java
+package com.cos.photogramstart.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
+import com.cos.photogramstart.config.oauth.OAuth2DetailsService;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@EnableWebSecurity // 해당 파일로 시큐리티를 활성화
+@Configuration // IoC
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+	private final OAuth2DetailsService auth2DetailsService;
+	
+	public BCryptPasswordEncoder encode() {
+		return new BCryptPasswordEncoder();
+	}
+
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		// super 삭제 -> 기존 시큐리티가 가지고 있는 기능이 다 비활성화됨 (localhost:8080 ->
+		// localhost:8080/login 을 비활성화)
+		http.csrf().disable();
+		http.authorizeRequests()
+				.antMatchers("/", "/user/**", "/image/**", "/subscribe/**", "/comment/**", "/api/**").authenticated() // 인증이 필요
+				.anyRequest().permitAll() // 그 외는 허용
+				.and()
+				.formLogin()
+				.loginPage("/auth/signin") // 인증이 필요한 url이면 이쪽으로 자동으로 가게 하겠다 // GET
+				.loginProcessingUrl("/auth/signin") // POST -> 스프링 시큐리티가 로그인 프로레스 진행
+				.defaultSuccessUrl("/") // 로그인이 정상적으로 처리되면 / 로 가게 할게
+				.and()
+				.oauth2Login() // form로그인도 하는데, oauth2로그인도 할거야
+				.userInfoEndpoint() // oauth2로그인을 하면 최종응답을 회원정보를 바로 받을 수 있다.
+				.userService(auth2DetailsService); 
+	}
+}
+```
+
+com.cos.photogramstart.config.oauth.OAuth2DetailsService.java
+
+```java
+package com.cos.photogramstart.config.oauth;
+
+import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.stereotype.Service;
+
+@Service
+public class OAuth2DetailsService extends DefaultOAuth2UserService{
+	@Override
+	public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
+		
+		System.out.println("OAuth2 서비스 탐");
+		OAuth2User oauth2User = super.loadUser(userRequest);
+		System.out.println(oauth2User.getAttributes());
+		return null;
+	}
+}
+```
+
+signin.jsp
+
+```java
+<!-- Oauth 소셜로그인 -->
+   <div class="login__facebook">
+      <button onclick="javascript:location.href='/oauth2/authorization/facebook'">
+         <i class="fab fa-facebook-square"></i>
+            <span>Facebook으로 로그인</span>
+      </button>
+```
+
+### 85. OAuth2 페이스북 로그인-구현 완료
+
+OAuth2DetailsService.java
+
+```java
+package com.cos.photogramstart.config.oauth;
+
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.stereotype.Service;
+
+import com.cos.photogramstart.config.auth.PrincipalDatails;
+import com.cos.photogramstart.domain.user.User;
+import com.cos.photogramstart.domain.user.UserRepository;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+@Service
+public class OAuth2DetailsService extends DefaultOAuth2UserService{
+	
+	private final UserRepository userRepository;
+	
+	@Override
+	public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
+		
+		//System.out.println("OAuth2 서비스 탐");
+		OAuth2User oauth2User = super.loadUser(userRequest);
+		//System.out.println(oauth2User.getAttributes());
+		
+		Map<String, Object> userInfo = oauth2User.getAttributes();
+		
+		String username = "facebook_"+(String) userInfo.get("id");
+		String password = new BCryptPasswordEncoder().encode(UUID.randomUUID().toString());
+		String email = (String) userInfo.get("email");
+		String name = (String) userInfo.get("name");
+		
+		User userEntity = userRepository.findByUsername(username);
+		
+		if(userEntity == null) { // 페이스북 최초 로그인
+			
+			User user = User.builder()
+					.username(username)
+					.password(password)
+					.email(email)
+					.name(name)
+					.role("ROLE_USER")
+					.build();
+			
+			return new PrincipalDatails(userRepository.save(user),oauth2User.getAttributes());
+		} else { //페이스북으로 이미 회원가입이 되어 있다는 뜻
+			return new PrincipalDatails(userEntity,oauth2User.getAttributes());
+		}
+
+		
+
+	}
+}
+```
+
+PrincipalDatails.java
+
+```java
+public class PrincipalDatails implements UserDetails, OAuth2User{
+```
+
+User.java
+
+```java
+@Column(length = 100, unique = true) // OAuth2 로그인을 위해 칼럼 늘리기
+	private String username;
+```
